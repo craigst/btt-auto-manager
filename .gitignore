@@ -41,6 +41,10 @@ getsql.log
 
 # Configuration (contains sensitive data)
 btt_config.json
+.env
+.env.local
+.env.production
+.env.development
 
 # IDE
 .vscode/

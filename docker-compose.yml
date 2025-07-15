@@ -2,21 +2,27 @@ version: '3.8'
 
 services:
   btt-auto-manager:
-    image: ghcr.io/craigst/btt-auto-manager:main
-    container_name: btt-auto-manager
+    image: ${DOCKER_IMAGE:-ghcr.io/craigst/btt-auto-manager:main}
+    container_name: ${CONTAINER_NAME:-btt-auto-manager}
     ports:
-      - "5680:5680"  # Webhook API port
+      - "${WEBHOOK_PORT:-5680}:5680"  # Webhook API port
     volumes:
-      - ./db:/app/db  # Database storage
-      - ./logs:/app/logs  # Log files
-      - ./btt_config.json:/app/btt_config.json  # Configuration
-      - /dev/bus/usb:/dev/bus/usb  # USB device access (for ADB)
+      - ${DB_PATH:-./db}:/app/db  # Database storage
+      - ${LOGS_PATH:-./logs}:/app/logs  # Log files
+      - ${CONFIG_PATH:-./btt_config.json}:/app/btt_config.json  # Configuration
+      - ${ADB_DEVICE_PATH:-/dev/bus/usb}:/dev/bus/usb  # USB device access (for ADB)
     environment:
-      - WEBHOOK_HOST=0.0.0.0
-      - WEBHOOK_PORT=5680
-      - PYTHONUNBUFFERED=1
+      - WEBHOOK_HOST=${WEBHOOK_HOST:-0.0.0.0}
+      - WEBHOOK_PORT=${WEBHOOK_PORT:-5680}
+      - PYTHONUNBUFFERED=${PYTHONUNBUFFERED:-1}
+      - ENVIRONMENT=${ENVIRONMENT:-production}
+      - DEBUG=${DEBUG:-false}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - AUTO_ENABLED=${AUTO_ENABLED:-false}
+      - INTERVAL_MINUTES=${INTERVAL_MINUTES:-20}
+      - WEBHOOK_ENABLED=${WEBHOOK_ENABLED:-true}
     devices:
-      - /dev/bus/usb:/dev/bus/usb  # USB device access
+      - ${ADB_DEVICE_PATH:-/dev/bus/usb}:/dev/bus/usb  # USB device access
     privileged: true  # Required for ADB access
     restart: unless-stopped
     networks:

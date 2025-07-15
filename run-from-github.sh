@@ -46,6 +46,21 @@ print_status "Docker and Docker Compose are installed"
 print_status "Creating directories..."
 mkdir -p db logs
 
+# Set up environment variables
+if [ -f setup-env.sh ]; then
+    print_status "Setting up environment variables..."
+    chmod +x setup-env.sh
+    ./setup-env.sh
+else
+    print_warning "setup-env.sh not found, using default configuration"
+    # Create basic .env file if env.example exists
+    if [ -f env.example ] && [ ! -f .env ]; then
+        print_status "Creating .env file from env.example..."
+        cp env.example .env
+        chmod 600 .env
+    fi
+fi
+
 # Create default configuration if it doesn't exist
 if [ ! -f btt_config.json ]; then
     print_status "Creating default configuration..."
@@ -108,6 +123,14 @@ echo "  Container: btt-auto-manager"
 echo "  Webhook URL: http://localhost:5680"
 echo "  Health Check: http://localhost:5680/healthz"
 echo "  Status: http://localhost:5680/status"
+echo ""
+echo "Environment Configuration:"
+if [ -f .env ]; then
+    echo "  Environment file: .env (configured)"
+    echo "  To modify settings: nano .env && docker-compose restart"
+else
+    echo "  Environment file: .env (not found, using defaults)"
+fi
 echo ""
 echo "Management Commands:"
 echo "  View logs: docker-compose logs -f"
