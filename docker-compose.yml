@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  btt-auto-manager:
+    build: .
+    container_name: btt-auto-manager
+    ports:
+      - "5680:5680"  # Webhook API port
+    volumes:
+      - ./db:/app/db  # Database storage
+      - ./logs:/app/logs  # Log files
+      - ./btt_config.json:/app/btt_config.json  # Configuration
+      - /dev/bus/usb:/dev/bus/usb  # USB device access (for ADB)
+    environment:
+      - WEBHOOK_HOST=0.0.0.0
+      - WEBHOOK_PORT=5680
+      - PYTHONUNBUFFERED=1
+    devices:
+      - /dev/bus/usb:/dev/bus/usb  # USB device access
+    privileged: true  # Required for ADB access
+    restart: unless-stopped
+    networks:
+      - btt-network
+    # Override user for ADB access
+    user: root
+
+networks:
+  btt-network:
+    driver: bridge 
