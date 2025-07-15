@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   btt-auto-manager:
-    build: .
+    image: ghcr.io/craigst/btt-auto-manager:main
     container_name: btt-auto-manager
     ports:
       - "5680:5680"  # Webhook API port
@@ -23,6 +23,13 @@ services:
       - btt-network
     # Override user for ADB access
     user: root
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5680/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
 networks:
   btt-network:
