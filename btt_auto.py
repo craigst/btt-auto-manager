@@ -530,18 +530,24 @@ class BTTAutoManager:
                 # Check if auto is still enabled
                 if not self.config.get("auto_enabled", False):
                     break
-                
+
                 # Try to connect to ADB devices if needed
                 if not getsql.get_connected_device():
-                    self.try_connect_adb_ips()
-                
+                    connected = self.try_connect_adb_ips()
+                    if not connected:
+                        msg = "[yellow]No ADB device connected. Retrying in 60 seconds...[/yellow]"
+                        self.log_webhook("No ADB device connected. Retrying in 60 seconds...")
+                        console.print(msg)
+                        time.sleep(60)
+                        continue
+
                 # Run getsql
                 self.run_getsql()
-                
+
                 # Wait for next interval
                 interval_seconds = self.config.get("interval_minutes", 5) * 60
                 time.sleep(interval_seconds)
-                
+
             except Exception as e:
                 console.print(f"[red]Auto-update error: {e}[/red]")
                 time.sleep(60)  # Wait 1 minute before retrying

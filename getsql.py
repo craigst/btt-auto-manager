@@ -377,7 +377,7 @@ def main():
             log(f"ERROR: {error_message}")
             progress.stop()
             show_final_ui(steps, status_map, error_message, summary_details, cleanup_errors, device_file_info, db_last_update, diagnostics_run, diagnostics_results, timings, db_counts)
-            sys.exit(1)
+            return False
         status_map[0] = 'done'
         progress.advance(task)
 
@@ -391,7 +391,7 @@ def main():
             log(f"ERROR: {error_message}")
             progress.stop()
             show_final_ui(steps, status_map, error_message, summary_details, cleanup_errors, device_file_info, db_last_update, diagnostics_run, diagnostics_results, timings, db_counts)
-            sys.exit(1)
+            return False
         status_map[1] = 'done'
         log(f"Using device: {device}")
         progress.advance(task)
@@ -418,7 +418,7 @@ def main():
             diagnostics_results = run_diagnostics_commands(device)
             progress.stop()
             show_final_ui(steps, status_map, error_message, summary_details, cleanup_errors, device_file_info, db_last_update, diagnostics_run, diagnostics_results, timings, db_counts)
-            sys.exit(1)
+            return False
         status_map[3] = 'done'
         log(f"Found sql.db at {DEVICE_DB_PATH}")
         log(f"File details: {ls_out}")
@@ -441,7 +441,7 @@ def main():
             log(f"ERROR: {error_message}")
             progress.stop()
             show_final_ui(steps, status_map, error_message, summary_details, cleanup_errors, device_file_info, db_last_update, diagnostics_run, diagnostics_results, timings, db_counts)
-            sys.exit(1)
+            return False
         status_map[5] = 'done'
         progress.advance(task)
 
@@ -455,7 +455,7 @@ def main():
             log(f"ERROR: {error_message}")
             progress.stop()
             show_final_ui(steps, status_map, error_message, summary_details, cleanup_errors, device_file_info, db_last_update, diagnostics_run, diagnostics_results, timings, db_counts)
-            sys.exit(1)
+            return False
         status_map[6] = 'done'
         progress.advance(task)
 
@@ -487,7 +487,13 @@ def main():
             log(f"ERROR: {error_message}")
         progress.advance(task)
 
-    show_final_ui(steps, status_map, error_message, summary_details, cleanup_errors, device_file_info, db_last_update, diagnostics_run, diagnostics_results, timings, db_counts)
+    result = show_final_ui(steps, status_map, error_message, summary_details, cleanup_errors, device_file_info, db_last_update, diagnostics_run, diagnostics_results, timings, db_counts)
+    if error_message:
+        return False
+    elif summary_details:
+        return True
+    else:
+        return None
 
 def show_final_ui(steps, status_map, error_message, summary_details, cleanup_errors, device_file_info, db_last_update, diagnostics_run=False, diagnostics_results=None, timings=None, db_counts=None):
     table = Table(title="ADB SQL.db Retriever Progress", box=box.SIMPLE, show_lines=True)
@@ -524,7 +530,7 @@ def show_final_ui(steps, status_map, error_message, summary_details, cleanup_err
                     if err:
                         msg += f"\n  stderr: {err[:100]}{'...' if len(err)>100 else ''}"
         console.print(Panel(msg, title="[red]FAILED[/red]", style="red"))
-        return
+        return False
     elif summary_details:
         # Clean SUCCESS panel
         msg = Text()
@@ -550,9 +556,10 @@ def show_final_ui(steps, status_map, error_message, summary_details, cleanup_err
             msg.append("\nCleanup warnings:\n", style="bold yellow")
             msg.append("\n".join(cleanup_errors) + "\n")
         console.print(Panel(msg, title="SUCCESS", style="green"))
-        return
+        return True
     else:
         console.print(Panel("[yellow]Process completed, but no file details available.[/yellow]", title="[yellow]INFO[/yellow]", style="yellow"))
+        return None
 
 if __name__ == "__main__":
     main() 
