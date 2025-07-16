@@ -851,6 +851,7 @@ class BTTAutoManager:
         
         time_since_last_update = None
         time_since_last_update_formatted = None
+        next_update_time = None
         
         if last_processed:
             try:
@@ -858,6 +859,10 @@ class BTTAutoManager:
                 time_diff = now - last_time.replace(tzinfo=None)
                 time_since_last_update = int(time_diff.total_seconds() * 1000)
                 time_since_last_update_formatted = self.format_time_difference(time_diff.total_seconds())
+                
+                # Calculate next update time based on interval
+                interval_minutes = self.config.get('interval_minutes', 5)
+                next_update_time = last_time.replace(tzinfo=None) + timedelta(minutes=interval_minutes)
             except:
                 pass
         
@@ -866,6 +871,7 @@ class BTTAutoManager:
             'lastProcessed': last_processed,
             'timeSinceLastUpdate': time_since_last_update,
             'timeSinceLastUpdateFormatted': time_since_last_update_formatted,
+            'nextUpdateTime': next_update_time.isoformat() if next_update_time else None,
             'dwjjobCount': len(self.extracted_data.get('DWJJOB', [])),
             'dwvvehCount': len(self.extracted_data.get('DWVVEH', [])),
             'serverTime': now.isoformat(),
@@ -877,7 +883,8 @@ class BTTAutoManager:
             'lastLocations': self.config.get('last_locations', 0),
             'lastCars': self.config.get('last_cars', 0),
             'lastLoads': self.config.get('last_loads', 0),
-            'adbIps': self.config.get('adb_ips', [])
+            'adbIps': self.config.get('adb_ips', []),
+            'preferredDevice': self.config.get('preferred_device', None)
         }
     
     def format_time_difference(self, seconds):
@@ -1012,11 +1019,13 @@ class BTTAutoManager:
     
     def toggle_auto_update_webhook(self):
         """Toggle auto-update for webhook calls"""
-        if self.config.get("auto_enabled", False):
+        current_state = self.config.get("auto_enabled", False)
+        if current_state:
             self.stop_auto_update()
         else:
             self.start_auto_update()
         self.log_webhook(f"Auto-update toggled via webhook: {'enabled' if self.config.get('auto_enabled', False) else 'disabled'}")
+        return {'success': True, 'autoEnabled': self.config.get('auto_enabled', False)}
     
     def auto_update_loop(self):
         """Main loop for auto-updating"""

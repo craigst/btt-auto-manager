@@ -650,8 +650,14 @@
             }
             
             const intervalMinutes = status.intervalMinutes || 5;
-            const lastProcessed = status.lastProcessed ? new Date(status.lastProcessed) : new Date();
-            nextUpdateTime = new Date(lastProcessed.getTime() + (intervalMinutes * 60 * 1000));
+            
+            // Use nextUpdateTime from API if available, otherwise calculate from lastProcessed
+            if (status.nextUpdateTime) {
+                nextUpdateTime = new Date(status.nextUpdateTime);
+            } else {
+                const lastProcessed = status.lastProcessed ? new Date(status.lastProcessed) : new Date();
+                nextUpdateTime = new Date(lastProcessed.getTime() + (intervalMinutes * 60 * 1000));
+            }
             
             function updateCountdown() {
                 const now = new Date();
@@ -1101,6 +1107,7 @@
         // Control functions
         async function toggleAutoUpdate() {
             const toggle = document.getElementById('auto-update-toggle');
+            const settingsToggle = document.getElementById('settings-auto-update-toggle');
             const statusText = document.getElementById('auto-update-status');
             
             // Show loading state
@@ -1112,12 +1119,17 @@
             
             if (result.error) {
                 showMessage('control-result', `Error: ${result.error}`, 'error');
-                // Revert toggle
+                // Revert toggles
                 toggle.checked = !toggle.checked;
+                if (settingsToggle) settingsToggle.checked = !settingsToggle.checked;
                 statusText.textContent = toggle.checked ? 'Enabled' : 'Disabled';
             } else {
                 showMessage('control-result', 'Auto-update toggled successfully', 'success');
-                statusText.textContent = toggle.checked ? 'Enabled' : 'Disabled';
+                // Update toggles based on server response
+                const newState = result.autoEnabled || false;
+                toggle.checked = newState;
+                if (settingsToggle) settingsToggle.checked = newState;
+                statusText.textContent = newState ? 'Enabled' : 'Disabled';
                 refreshStatus();
             }
         }

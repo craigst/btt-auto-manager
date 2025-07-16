@@ -28,6 +28,9 @@ COPY btt_auto.py .
 COPY web_ui.html .
 COPY network-server.png .
 
+# Set proper permissions for the icon
+RUN chmod 644 network-server.png
+
 # Copy Docker entry point
 COPY docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh

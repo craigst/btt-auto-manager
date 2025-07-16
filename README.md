@@ -161,7 +161,7 @@ python3 btt_auto.py
 
 ### File Structure
 - `btt_auto.py` - Main application (consolidated from getsql.py and btt_launcher.py)
-- `web_ui.html` - Web interface
+- `web_ui.html` - Web user interface
 - `network-server.png` - Application icon
 - `btt_config.json` - Configuration file
 - `requirements.txt` - Python dependencies
