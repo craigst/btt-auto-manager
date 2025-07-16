@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>BTT Auto Manager</title>
+    <link rel="icon" type="image/png" href="./network-server.png">
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -25,6 +26,12 @@
             color: white;
             padding: 20px;
             text-align: center;
+            position: relative;
+        }
+        .header-logo {
+            height: 40px;
+            vertical-align: middle;
+            margin-right: 12px;
         }
         .header h1 {
             margin: 0;
@@ -354,9 +361,12 @@
     <div class="container">
         <div class="header">
             <div style="display: flex; justify-content: space-between; align-items: center;">
-                <div>
-                    <h1>🚛 BTT Auto Manager</h1>
-                    <p>SQL Database Extraction & ADB Management</p>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <img src="./network-server.png" alt="App Icon" class="header-logo" />
+                    <div>
+                        <h1 style="margin:0;display:inline-block;vertical-align:middle;">BTT Auto Manager</h1>
+                        <p style="margin:0;">SQL Database Extraction & ADB Management</p>
+                    </div>
                 </div>
                 <button class="settings-btn" onclick="openSettings()" title="Settings">
                     <span style="font-size: 24px;">⚙️</span>
@@ -367,19 +377,19 @@
         <div class="content">
             <!-- Status Section -->
             <div class="section">
-                <h2>📊 System Status <button class="refresh-btn" onclick="refreshStatus()">🔄 Refresh</button></h2>
+                <h2>📊 System Status</h2>
                 <div id="status-content" class="loading">Loading status...</div>
             </div>
 
             <!-- SQL Data Section -->
             <div class="section">
-                <h2 id="sql-header">🗄️ SQL Database Data <button class="refresh-btn" onclick="refreshSQLData()">🔄 Refresh</button></h2>
+                <h2 id="sql-header">🗄️ SQL Database Data <span id="sql-last-updated"></span></h2>
                 <div id="sql-content" class="loading">Loading SQL data...</div>
             </div>
 
             <!-- ADB IP Management Section -->
             <div class="section">
-                <h2>📱 ADB Device Management <button class="refresh-btn" onclick="refreshADBIPs()">🔄 Refresh</button></h2>
+                <h2>📱 ADB Device Management</h2>
                 <div id="adb-content" class="loading">Loading ADB IPs...</div>
                 
                 <div class="input-group">
@@ -411,32 +421,32 @@
                 <div class="modal-title">⚙️ System Settings</div>
                 <span class="close" onclick="closeSettings()">&times;</span>
             </div>
-            <div id="settingsContent">
-                <div class="status-card">
-                    <h3>Auto-Update Settings</h3>
-                    <div class="input-group">
-                        <label>Auto-Update Status:</label>
-                        <div style="display: flex; align-items: center; gap: 10px;">
-                            <label class="toggle-switch">
-                                <input type="checkbox" id="auto-update-toggle" onchange="toggleAutoUpdate()">
-                                <span class="slider"></span>
-                            </label>
-                            <span id="auto-update-status">Loading...</span>
-                        </div>
-                    </div>
-                    <div class="input-group">
-                        <label for="update-interval">Update Interval (minutes):</label>
-                        <input type="number" id="update-interval" min="1" max="1440" value="5" />
-                        <button class="button" onclick="setUpdateInterval()">Set Interval</button>
+            <div id="settingsContent" style="display: flex; flex-direction: column; gap: 24px;">
+                <div style="border-bottom: 1px solid #444; padding-bottom: 12px;">
+                    <h3 style="margin:0 0 10px 0;">General</h3>
+                    <div class="input-group" style="margin-bottom: 10px;">
+                        <label>Auto-Update</label>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="auto-update-toggle" onchange="toggleAutoUpdate()">
+                            <span class="slider"></span>
+                        </label>
+                        <span id="auto-update-status" style="margin-left: 10px;">Loading...</span>
                     </div>
                 </div>
-                
-                <div class="status-card">
-                    <h3>Manual Controls</h3>
+                <div style="border-bottom: 1px solid #444; padding-bottom: 12px;">
+                    <h3 style="margin:0 0 10px 0;">ADB Devices</h3>
+                    <div class="input-group">
+                        <label for="preferred-device">Preferred Device</label>
+                        <select id="preferred-device" style="width:100%;padding:8px;border-radius:4px;background:#404040;color:#e0e0e0;"></select>
+                        <small style="color:#9ca3af;">If preferred device is offline, the next connected device will be used.</small>
+                        <button class="button success" style="margin-top:10px;" onclick="savePreferredDevice()">Save Preferred Device</button>
+                    </div>
+                </div>
+                <div>
+                    <h3 style="margin:0 0 10px 0;">Manual Actions</h3>
                     <button class="button" onclick="runExtraction()">Run Extraction Now</button>
                     <button class="button" onclick="updateStatus()">Update Status</button>
                 </div>
-                
                 <div id="control-result"></div>
             </div>
         </div>
@@ -500,8 +510,10 @@
                             <div class="status-value status-online">🟢 Running</div>
                         </div>
                         <div class="status-card">
-                            <h3>Update Interval</h3>
-                            <div class="status-value">${status.intervalMinutes || 5} minutes</div>
+                            <h3>ADB Status</h3>
+                            <div class="status-value ${status.adbConnected ? 'status-online' : 'status-offline'}">
+                                ${status.adbConnected ? '🟢 Connected' : '🔴 Not Connected'}
+                            </div>
                         </div>
                         <div class="status-card">
                             <h3>Server Uptime</h3>
@@ -552,7 +564,7 @@
                 const sqlHeader = document.getElementById('sql-header');
                 if (sqlHeader && status && !status.error) {
                     const lastUpdated = status.lastProcessed || 'Never';
-                    sqlHeader.innerHTML = `🗄️ SQL Database Data <span style="font-size: 0.8em; color: #9ca3af; margin-left: 10px;">Last updated: ${lastUpdated}</span> <button class="refresh-btn" onclick="refreshSQLData()">🔄 Refresh</button>`;
+                    sqlHeader.innerHTML = `🗄️ SQL Database Data <span id="sql-last-updated" style="font-size: 0.8em; color: #9ca3af; margin-left: 10px;">Last updated: ${lastUpdated}</span>`;
                 }
                 
                 let html = '<div class="status-grid">';
@@ -871,6 +883,7 @@
                 modal.style.display = 'block';
                 // Refresh status to update the controls
                 refreshStatus();
+                refreshADBIPs(); // Refresh ADB IPs to populate the dropdown
             }
         }
 
@@ -1067,6 +1080,53 @@
             nameSpan.textContent = newName;
             nameSpan.style.display = 'inline-block';
             nameInput.style.display = 'none';
+        }
+
+        // Preferred Device Management Functions
+        async function refreshPreferredDevice() {
+            const preferredDeviceSelect = document.getElementById('preferred-device');
+            if (!preferredDeviceSelect) return;
+
+            const ips = await apiCall('/webhook/adb-ips');
+            if (ips.error) {
+                preferredDeviceSelect.innerHTML = '<option value="">Error loading ADB IPs</option>';
+                return;
+            }
+
+            preferredDeviceSelect.innerHTML = '<option value="">Select a preferred device</option>';
+            ips.forEach(entry => {
+                const ip = entry.ip || entry;
+                const name = entry.name || 'Unnamed Device';
+                preferredDeviceSelect.innerHTML += `<option value="${ip}">${name} (${ip})</option>`;
+            });
+
+            const currentPreferredIp = localStorage.getItem('preferredDeviceIp');
+            if (currentPreferredIp) {
+                preferredDeviceSelect.value = currentPreferredIp;
+            }
+        }
+
+        async function savePreferredDevice() {
+            const preferredDeviceSelect = document.getElementById('preferred-device');
+            const selectedIp = preferredDeviceSelect.value;
+
+            if (!selectedIp) {
+                showMessage('control-result', 'Please select a preferred device', 'error');
+                return;
+            }
+
+            const result = await apiCall('/webhook/control', 'POST', {
+                action: 'set_preferred_device',
+                ip: selectedIp
+            });
+
+            if (result.error) {
+                showMessage('control-result', `Error setting preferred device: ${result.error}`, 'error');
+            } else {
+                showMessage('control-result', `Preferred device set to: ${result.preferredDeviceName || selectedIp}`, 'success');
+                localStorage.setItem('preferredDeviceIp', selectedIp);
+                refreshStatus(); // Refresh status to show the new preferred device status
+            }
         }
 
     </script>
