@@ -234,20 +234,38 @@ class WebhookHandler(BaseHTTPRequestHandler):
     def serve_status(self):
         """Serve status information as JSON"""
         try:
-            # Check ADB device connections
-            adb_ips = self.manager.get_adb_ips()
+            # Check if manager exists and has required attributes
+            if not self.manager:
+                self.send_error(500, "Manager not initialized")
+                return
+                
+            # Check ADB device connections with error handling
+            adb_ips = []
             any_connected = False
-            for ip in adb_ips:
-                if self.manager.test_adb_connection(ip):
-                    any_connected = True
-                    break
+            try:
+                adb_ips = self.manager.get_adb_ips()
+                for ip in adb_ips:
+                    try:
+                        if self.manager.test_adb_connection(ip):
+                            any_connected = True
+                            break
+                    except Exception as e:
+                        self.manager.log_webhook(f"Error testing ADB connection for {ip}: {e}")
+            except Exception as e:
+                self.manager.log_webhook(f"Error getting ADB IPs: {e}")
+            
             # If no ADB device is connected, force auto_enabled to False
             if not any_connected:
-                self.manager.auto_enabled = False
-                self.manager.config['auto_enabled'] = False
-                self.manager.save_config()
+                try:
+                    self.manager.auto_enabled = False
+                    self.manager.config['auto_enabled'] = False
+                    self.manager.save_config()
+                except Exception as e:
+                    self.manager.log_webhook(f"Error updating auto_enabled: {e}")
+            
+            # Build status with safe attribute access
             status = {
-                'autoEnabled': self.manager.auto_enabled,
+                'autoEnabled': getattr(self.manager, 'auto_enabled', False),
                 'intervalMinutes': getattr(self.manager, 'interval_minutes', 5),
                 'uptime': time.time() - getattr(self.manager, 'start_time', time.time()),
                 'lastLocations': getattr(self.manager, 'last_locations', 0),
@@ -258,13 +276,18 @@ class WebhookHandler(BaseHTTPRequestHandler):
                 'timestamp': datetime.now().isoformat(),
                 'adbConnected': any_connected
             }
+            
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
             self.send_header('Access-Control-Allow-Origin', '*')
             self.end_headers()
             self.wfile.write(json.dumps(status, indent=2).encode())
+            
         except Exception as e:
-            self.send_error(500, f"Status error: {e}")
+            error_msg = f"Status error: {e}"
+            if self.manager:
+                self.manager.log_webhook(error_msg)
+            self.send_error(500, error_msg)
     
     def serve_adb_ips(self):
         """Serve ADB IP list with connection status"""
@@ -320,6 +343,9 @@ class WebhookHandler(BaseHTTPRequestHandler):
 
 class BTTAutoManager:
     def __init__(self):
+        # Set start_time first before any other operations
+        self.start_time = time.time()
+        
         self.config = self.load_config()
         self.running = False
         self.last_run = None
@@ -328,9 +354,8 @@ class BTTAutoManager:
         self.webhook_server = None
         self.webhook_thread = None
         self.webhook_logs = []
-        self.start_time = time.time()
         
-        # Initialize attributes from config
+        # Initialize attributes from config with safe defaults
         self.auto_enabled = self.config.get('auto_enabled', False)
         self.interval_minutes = self.config.get('interval_minutes', 5)
         self.last_locations = self.config.get('last_locations', 0)
@@ -599,7 +624,7 @@ class BTTAutoManager:
             self.webhook_thread = threading.Thread(target=self.webhook_server.serve_forever, daemon=True)
             self.webhook_thread.start()
             
-            self._start_time = time.time()
+            # Use the existing start_time attribute
             success_msg = f"Webhook server started successfully on http://{host}:{port}"
             self.log_webhook(success_msg)
             console.print(f"[green]{success_msg}[/green]")
