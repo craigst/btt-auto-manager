@@ -30,7 +30,7 @@ RUN pip3 install --no-cache-dir -r requirements.txt
 COPY btt_launcher.py .
 COPY getsql.py .
 COPY btt_auto.py .
-COPY AUTOREADME.md .
+COPY web_ui.html .
 
 # Copy and set up entrypoint script
 COPY docker-entrypoint.sh /usr/local/bin/

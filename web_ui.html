@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BTT Auto Manager</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 2.5em;
+        }
+        .content {
+            padding: 20px;
+        }
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            background: #fafafa;
+        }
+        .section h2 {
+            margin-top: 0;
+            color: #333;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        .status-card {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .status-card h3 {
+            margin: 0 0 10px 0;
+            color: #333;
+        }
+        .status-value {
+            font-size: 1.2em;
+            font-weight: bold;
+        }
+        .status-online { color: #28a745; }
+        .status-offline { color: #dc3545; }
+        .status-warning { color: #ffc107; }
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        .data-table th, .data-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        .data-table th {
+            background-color: #667eea;
+            color: white;
+        }
+        .data-table tr:nth-child(even) {
+            background-color: #f2f2f2;
+        }
+        .data-table tr:hover {
+            background-color: #e9ecef;
+        }
+        .button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 14px;
+        }
+        .button:hover {
+            background: #5a6fd8;
+        }
+        .button.danger {
+            background: #dc3545;
+        }
+        .button.danger:hover {
+            background: #c82333;
+        }
+        .button.success {
+            background: #28a745;
+        }
+        .button.success:hover {
+            background: #218838;
+        }
+        .button.warning {
+            background: #ffc107;
+            color: #212529;
+        }
+        .button.warning:hover {
+            background: #e0a800;
+        }
+        .input-group {
+            margin: 10px 0;
+        }
+        .input-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        .input-group input, .input-group select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        .refresh-btn {
+            float: right;
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .refresh-btn:hover {
+            background: #218838;
+        }
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+        }
+        .error {
+            color: #dc3545;
+            background: #f8d7da;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .success {
+            color: #155724;
+            background: #d4edda;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .warning {
+            color: #856404;
+            background: #fff3cd;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 60px;
+            height: 34px;
+        }
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 34px;
+        }
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 26px;
+            width: 26px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+        input:checked + .slider {
+            background-color: #28a745;
+        }
+        input:checked + .slider:before {
+            transform: translateX(26px);
+        }
+        .connection-status {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .connection-connected {
+            background: #d4edda;
+            color: #155724;
+        }
+        .connection-disconnected {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .connection-testing {
+            background: #fff3cd;
+            color: #856404;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚛 BTT Auto Manager</h1>
+            <p>SQL Database Extraction & ADB Management</p>
+        </div>
+        
+        <div class="content">
+            <!-- Status Section -->
+            <div class="section">
+                <h2>📊 System Status <button class="refresh-btn" onclick="refreshStatus()">🔄 Refresh</button></h2>
+                <div id="status-content" class="loading">Loading status...</div>
+            </div>
+
+            <!-- SQL Data Section -->
+            <div class="section">
+                <h2>🗄️ SQL Database Data <button class="refresh-btn" onclick="refreshSQLData()">🔄 Refresh</button></h2>
+                <div id="sql-content" class="loading">Loading SQL data...</div>
+            </div>
+
+            <!-- ADB IP Management Section -->
+            <div class="section">
+                <h2>📱 ADB Device Management <button class="refresh-btn" onclick="refreshADBIPs()">🔄 Refresh</button></h2>
+                <div id="adb-content" class="loading">Loading ADB IPs...</div>
+                
+                <div class="input-group">
+                    <label for="new-ip">Add New ADB IP:</label>
+                    <input type="text" id="new-ip" placeholder="192.168.1.100:5555" />
+                    <button class="button success" onclick="addADBIP()">Add IP</button>
+                </div>
+            </div>
+
+            <!-- Control Section -->
+            <div class="section">
+                <h2>⚙️ System Controls</h2>
+                <div id="control-content">
+                    <div class="status-card">
+                        <h3>Auto-Update Settings</h3>
+                        <div class="input-group">
+                            <label>Auto-Update Status:</label>
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="auto-update-toggle" onchange="toggleAutoUpdate()">
+                                    <span class="slider"></span>
+                                </label>
+                                <span id="auto-update-status">Loading...</span>
+                            </div>
+                        </div>
+                        <div class="input-group">
+                            <label for="update-interval">Update Interval (minutes):</label>
+                            <input type="number" id="update-interval" min="1" max="1440" value="5" />
+                            <button class="button" onclick="setUpdateInterval()">Set Interval</button>
+                        </div>
+                    </div>
+                    
+                    <div class="status-card">
+                        <h3>Manual Controls</h3>
+                        <button class="button" onclick="runExtraction()">Run Extraction Now</button>
+                        <button class="button" onclick="updateStatus()">Update Status</button>
+                    </div>
+                </div>
+                <div id="control-result"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin;
+        
+        // Utility functions
+        async function apiCall(endpoint, method = 'GET', data = null) {
+            try {
+                const options = {
+                    method: method,
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                };
+                
+                if (data) {
+                    options.body = JSON.stringify(data);
+                }
+                
+                const response = await fetch(`${API_BASE}${endpoint}`, options);
+                return await response.json();
+            } catch (error) {
+                console.error('API call failed:', error);
+                return { error: error.message };
+            }
+        }
+
+        function showMessage(elementId, message, type = 'success') {
+            const element = document.getElementById(elementId);
+            element.innerHTML = `<div class="${type}">${message}</div>`;
+            setTimeout(() => {
+                element.innerHTML = '';
+            }, 5000);
+        }
+
+        // Status functions
+        async function refreshStatus() {
+            const statusDiv = document.getElementById('status-content');
+            statusDiv.innerHTML = '<div class="loading">Loading status...</div>';
+            
+            try {
+                const status = await apiCall('/status');
+                if (status.error) {
+                    statusDiv.innerHTML = `<div class="error">Error loading status: ${status.error}</div>`;
+                    return;
+                }
+                
+                const html = `
+                    <div class="status-grid">
+                        <div class="status-card">
+                            <h3>Auto-Update Status</h3>
+                            <div class="status-value ${status.autoEnabled ? 'status-online' : 'status-offline'}">
+                                ${status.autoEnabled ? '🟢 Enabled' : '🔴 Disabled'}
+                            </div>
+                        </div>
+                        <div class="status-card">
+                            <h3>Webhook Server</h3>
+                            <div class="status-value status-online">🟢 Running</div>
+                        </div>
+                        <div class="status-card">
+                            <h3>Update Interval</h3>
+                            <div class="status-value">${status.intervalMinutes || 5} minutes</div>
+                        </div>
+                        <div class="status-card">
+                            <h3>Server Uptime</h3>
+                            <div class="status-value">${Math.round(status.uptime || 0)} seconds</div>
+                        </div>
+                    </div>
+                    <div class="status-card">
+                        <h3>Database Statistics</h3>
+                        <table class="data-table">
+                            <tr>
+                                <th>Metric</th>
+                                <th>Value</th>
+                                <th>Last Updated</th>
+                            </tr>
+                            <tr>
+                                <td>Locations</td>
+                                <td>${status.lastLocations || 0}</td>
+                                <td>${status.lastProcessed || 'Never'}</td>
+                            </tr>
+                            <tr>
+                                <td>Cars</td>
+                                <td>${status.lastCars || 0}</td>
+                                <td>${status.lastProcessed || 'Never'}</td>
+                            </tr>
+                            <tr>
+                                <td>Loads</td>
+                                <td>${status.lastLoads || 0}</td>
+                                <td>${status.lastProcessed || 'Never'}</td>
+                            </tr>
+                        </table>
+                    </div>
+                `;
+                statusDiv.innerHTML = html;
+                
+                // Update the toggle switch and interval input
+                updateControlElements(status);
+                
+            } catch (error) {
+                statusDiv.innerHTML = `<div class="error">Error loading status: ${error.message}</div>`;
+            }
+        }
+
+        function updateControlElements(status) {
+            // Update toggle switch
+            const toggle = document.getElementById('auto-update-toggle');
+            const statusText = document.getElementById('auto-update-status');
+            if (toggle && statusText) {
+                toggle.checked = status.autoEnabled || false;
+                statusText.textContent = status.autoEnabled ? 'Enabled' : 'Disabled';
+            }
+            
+            // Update interval input
+            const intervalInput = document.getElementById('update-interval');
+            if (intervalInput) {
+                intervalInput.value = status.intervalMinutes || 5;
+            }
+        }
+
+        // SQL Data functions
+        async function refreshSQLData() {
+            const sqlDiv = document.getElementById('sql-content');
+            sqlDiv.innerHTML = '<div class="loading">Loading SQL data...</div>';
+            
+            try {
+                const [dwjjob, dwvveh] = await Promise.all([
+                    apiCall('/webhook/dwjjob'),
+                    apiCall('/webhook/dwvveh')
+                ]);
+                
+                let html = '<div class="status-grid">';
+                
+                // DWJJOB Data
+                if (dwjjob.error) {
+                    html += `<div class="status-card"><h3>DWJJOB Data</h3><div class="error">Error: ${dwjjob.error}</div></div>`;
+                } else {
+                    html += `
+                        <div class="status-card">
+                            <h3>DWJJOB Data (${dwjjob.length || 0} records)</h3>
+                            <div class="status-value">${dwjjob.length || 0} locations</div>
+                            ${dwjjob.length > 0 ? `<button class="button" onclick="showDWJJOBData()">View Details</button>` : ''}
+                        </div>
+                    `;
+                }
+                
+                // DWVVEH Data
+                if (dwvveh.error) {
+                    html += `<div class="status-card"><h3>DWVVEH Data</h3><div class="error">Error: ${dwvveh.error}</div></div>`;
+                } else {
+                    html += `
+                        <div class="status-card">
+                            <h3>DWVVEH Data (${dwvveh.length || 0} records)</h3>
+                            <div class="status-value">${dwvveh.length || 0} vehicles</div>
+                            ${dwvveh.length > 0 ? `<button class="button" onclick="showDWVVEHData()">View Details</button>` : ''}
+                        </div>
+                    `;
+                }
+                
+                html += '</div>';
+                sqlDiv.innerHTML = html;
+                
+                // Store data for detail views
+                window.dwjjobData = dwjjob;
+                window.dwvvehData = dwvveh;
+                
+            } catch (error) {
+                sqlDiv.innerHTML = `<div class="error">Error loading SQL data: ${error.message}</div>`;
+            }
+        }
+
+        function showDWJJOBData() {
+            if (!window.dwjjobData || window.dwjjobData.length === 0) {
+                alert('No DWJJOB data available');
+                return;
+            }
+            
+            const data = window.dwjjobData.slice(0, 10); // Show first 10 records
+            let html = '<h3>DWJJOB Data (First 10 records)</h3><table class="data-table"><thead><tr>';
+            
+            // Create headers from first record
+            if (data.length > 0) {
+                Object.keys(data[0]).forEach(key => {
+                    html += `<th>${key}</th>`;
+                });
+                html += '</tr></thead><tbody>';
+                
+                data.forEach(record => {
+                    html += '<tr>';
+                    Object.values(record).forEach(value => {
+                        html += `<td>${value || ''}</td>`;
+                    });
+                    html += '</tr>';
+                });
+                html += '</tbody></table>';
+            }
+            
+            document.getElementById('sql-content').innerHTML = html + '<button class="button" onclick="refreshSQLData()">← Back to Summary</button>';
+        }
+
+        function showDWVVEHData() {
+            if (!window.dwvvehData || window.dwvvehData.length === 0) {
+                alert('No DWVVEH data available');
+                return;
+            }
+            
+            const data = window.dwvvehData.slice(0, 10); // Show first 10 records
+            let html = '<h3>DWVVEH Data (First 10 records)</h3><table class="data-table"><thead><tr>';
+            
+            // Create headers from first record
+            if (data.length > 0) {
+                Object.keys(data[0]).forEach(key => {
+                    html += `<th>${key}</th>`;
+                });
+                html += '</tr></thead><tbody>';
+                
+                data.forEach(record => {
+                    html += '<tr>';
+                    Object.values(record).forEach(value => {
+                        html += `<td>${value || ''}</td>`;
+                    });
+                    html += '</tr>';
+                });
+                html += '</tbody></table>';
+            }
+            
+            document.getElementById('sql-content').innerHTML = html + '<button class="button" onclick="refreshSQLData()">← Back to Summary</button>';
+        }
+
+        // ADB IP Management functions
+        async function refreshADBIPs() {
+            const adbDiv = document.getElementById('adb-content');
+            adbDiv.innerHTML = '<div class="loading">Loading ADB IPs...</div>';
+            
+            try {
+                const ips = await apiCall('/webhook/adb-ips');
+                if (ips.error) {
+                    adbDiv.innerHTML = `<div class="error">Error loading ADB IPs: ${ips.error}</div>`;
+                    return;
+                }
+                
+                let html = '<div class="status-card">';
+                html += '<h3>Configured ADB IP Addresses</h3>';
+                
+                if (ips.length === 0) {
+                    html += '<p>No ADB IP addresses configured</p>';
+                } else {
+                    html += '<table class="data-table"><thead><tr><th>IP Address</th><th>Connection Status</th><th>Test Result</th><th>Actions</th></tr></thead><tbody>';
+                    ips.forEach(ip => {
+                        html += `
+                            <tr>
+                                <td>${ip}</td>
+                                <td><span class="connection-status connection-disconnected" id="status-${ip.replace(/[.:]/g, '-')}">Disconnected</span></td>
+                                <td><span id="test-${ip.replace(/[.:]/g, '-')}">-</span></td>
+                                <td>
+                                    <button class="button danger" onclick="removeADBIP('${ip}')">Remove</button>
+                                    <button class="button warning" onclick="testConnection('${ip}')">Test</button>
+                                </td>
+                            </tr>
+                        `;
+                    });
+                    html += '</tbody></table>';
+                }
+                html += '</div>';
+                adbDiv.innerHTML = html;
+                
+                // Test all connections
+                ips.forEach(ip => testConnection(ip));
+                
+            } catch (error) {
+                adbDiv.innerHTML = `<div class="error">Error loading ADB IPs: ${error.message}</div>`;
+            }
+        }
+
+        async function addADBIP() {
+            const ip = document.getElementById('new-ip').value.trim();
+            if (!ip) {
+                showMessage('control-result', 'Please enter an IP address', 'error');
+                return;
+            }
+            
+            const result = await apiCall('/webhook/adb-ips', 'POST', {
+                action: 'add',
+                ip: ip
+            });
+            
+            if (result.error) {
+                showMessage('control-result', `Error adding IP: ${result.error}`, 'error');
+            } else {
+                showMessage('control-result', `Successfully added IP: ${ip}`, 'success');
+                document.getElementById('new-ip').value = '';
+                refreshADBIPs();
+            }
+        }
+
+        async function removeADBIP(ip) {
+            if (!confirm(`Are you sure you want to remove ${ip}?`)) {
+                return;
+            }
+            
+            const result = await apiCall('/webhook/adb-ips', 'POST', {
+                action: 'remove',
+                ip: ip
+            });
+            
+            if (result.error) {
+                showMessage('control-result', `Error removing IP: ${result.error}`, 'error');
+            } else {
+                showMessage('control-result', `Successfully removed IP: ${ip}`, 'success');
+                refreshADBIPs();
+            }
+        }
+
+        async function testConnection(ip) {
+            const statusElement = document.getElementById(`status-${ip.replace(/[.:]/g, '-')}`);
+            const testElement = document.getElementById(`test-${ip.replace(/[.:]/g, '-')}`);
+            
+            if (statusElement) {
+                statusElement.textContent = 'Testing...';
+                statusElement.className = 'connection-status connection-testing';
+            }
+            
+            if (testElement) {
+                testElement.textContent = 'Testing...';
+                testElement.style.color = '#ffc107';
+            }
+            
+            try {
+                // Test connection by trying to connect via ADB
+                const result = await apiCall('/webhook/test-connection', 'POST', {
+                    ip: ip
+                });
+                
+                if (result.error) {
+                    if (statusElement) {
+                        statusElement.textContent = 'Failed';
+                        statusElement.className = 'connection-status connection-disconnected';
+                    }
+                    if (testElement) {
+                        testElement.textContent = 'FAIL';
+                        testElement.style.color = '#dc3545';
+                    }
+                } else {
+                    if (statusElement) {
+                        statusElement.textContent = result.connected ? 'Connected' : 'Disconnected';
+                        statusElement.className = result.connected ? 'connection-status connection-connected' : 'connection-status connection-disconnected';
+                    }
+                    if (testElement) {
+                        testElement.textContent = result.connected ? 'PASS' : 'FAIL';
+                        testElement.style.color = result.connected ? '#28a745' : '#dc3545';
+                    }
+                }
+            } catch (error) {
+                if (statusElement) {
+                    statusElement.textContent = 'Error';
+                    statusElement.className = 'connection-status connection-disconnected';
+                }
+                if (testElement) {
+                    testElement.textContent = 'ERROR';
+                    testElement.style.color = '#dc3545';
+                }
+            }
+        }
+
+        // Control functions
+        async function toggleAutoUpdate() {
+            const toggle = document.getElementById('auto-update-toggle');
+            const statusText = document.getElementById('auto-update-status');
+            
+            // Show loading state
+            statusText.textContent = 'Updating...';
+            
+            const result = await apiCall('/webhook/control', 'POST', {
+                action: 'toggle_auto'
+            });
+            
+            if (result.error) {
+                showMessage('control-result', `Error: ${result.error}`, 'error');
+                // Revert toggle
+                toggle.checked = !toggle.checked;
+                statusText.textContent = toggle.checked ? 'Enabled' : 'Disabled';
+            } else {
+                showMessage('control-result', 'Auto-update toggled successfully', 'success');
+                statusText.textContent = toggle.checked ? 'Enabled' : 'Disabled';
+                refreshStatus();
+            }
+        }
+
+        async function setUpdateInterval() {
+            const intervalInput = document.getElementById('update-interval');
+            const minutes = parseInt(intervalInput.value);
+            
+            if (isNaN(minutes) || minutes < 1 || minutes > 1440) {
+                showMessage('control-result', 'Please enter a valid interval between 1 and 1440 minutes', 'error');
+                return;
+            }
+            
+            const result = await apiCall('/webhook/control', 'POST', {
+                action: 'set_interval',
+                minutes: minutes
+            });
+            
+            if (result.error) {
+                showMessage('control-result', `Error: ${result.error}`, 'error');
+            } else {
+                showMessage('control-result', `Update interval set to ${minutes} minutes`, 'success');
+                refreshStatus();
+            }
+        }
+
+        async function runExtraction() {
+            const result = await apiCall('/webhook/control', 'POST', {
+                action: 'run_extraction'
+            });
+            
+            if (result.error) {
+                showMessage('control-result', `Error: ${result.error}`, 'error');
+            } else {
+                showMessage('control-result', 'SQL extraction started', 'success');
+                setTimeout(() => {
+                    refreshStatus();
+                    refreshSQLData();
+                }, 5000);
+            }
+        }
+
+        async function updateStatus() {
+            const result = await apiCall('/webhook/control', 'POST', {
+                action: 'update_status'
+            });
+            
+            if (result.error) {
+                showMessage('control-result', `Error: ${result.error}`, 'error');
+            } else {
+                showMessage('control-result', 'Status updated successfully', 'success');
+                refreshStatus();
+            }
+        }
+
+        // Initialize page
+        window.onload = function() {
+            refreshStatus();
+            refreshSQLData();
+            refreshADBIPs();
+            
+            // Auto-refresh every 30 seconds
+            setInterval(() => {
+                refreshStatus();
+            }, 30000);
+        };
+    </script>
+</body>
+</html> 

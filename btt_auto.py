@@ -91,6 +91,8 @@ class WebhookHandler(BaseHTTPRequestHandler):
                 self.handle_control(post_data)
             elif path == '/webhook/adb-ips':
                 self.handle_adb_ips(post_data)
+            elif path == '/webhook/test-connection':
+                self.handle_test_connection(post_data)
             else:
                 self.send_error(404, "Endpoint not found")
                 
@@ -114,9 +116,12 @@ class WebhookHandler(BaseHTTPRequestHandler):
                 minutes = data.get('minutes', 5)
                 self.manager.set_interval(minutes)
                 response = {'status': 'success', 'message': f'Interval set to {minutes} minutes'}
-            elif action == 'run_now':
+            elif action == 'run_extraction':
                 self.manager.run_getsql_webhook()
                 response = {'status': 'success', 'message': 'SQL extraction started'}
+            elif action == 'update_status':
+                self.manager.update_last_stats()
+                response = {'status': 'success', 'message': 'Status updated'}
             else:
                 response = {'status': 'error', 'message': 'Invalid action'}
             
@@ -151,6 +156,13 @@ class WebhookHandler(BaseHTTPRequestHandler):
                     response = {'status': 'success', 'message': f'Removed IP: {ip}'}
                 else:
                     response = {'status': 'error', 'message': 'IP address required'}
+            elif action == 'test_connection':
+                ip = data.get('ip')
+                if ip:
+                    connected = self.manager.test_adb_connection(ip)
+                    response = {'status': 'success', 'connected': connected, 'message': f'Connection test for {ip}'}
+                else:
+                    response = {'status': 'error', 'message': 'IP address required'}
             else:
                 response = {'status': 'error', 'message': 'Invalid action'}
             
@@ -164,6 +176,29 @@ class WebhookHandler(BaseHTTPRequestHandler):
             self.send_error(400, "Invalid JSON")
         except Exception as e:
             self.send_error(500, f"ADB IP error: {e}")
+    
+    def handle_test_connection(self, post_data):
+        """Handle ADB connection testing via webhook"""
+        try:
+            data = json.loads(post_data)
+            ip = data.get('ip')
+            
+            if ip:
+                connected = self.manager.test_adb_connection(ip)
+                response = {'status': 'success', 'connected': connected, 'message': f'Connection test for {ip}'}
+            else:
+                response = {'status': 'error', 'message': 'IP address required'}
+            
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            self.wfile.write(json.dumps(response, indent=2).encode())
+            
+        except json.JSONDecodeError:
+            self.send_error(400, "Invalid JSON")
+        except Exception as e:
+            self.send_error(500, f"Test connection error: {e}")
     
     def serve_dwjjob(self):
         """Serve DWJJOB data as JSON"""
@@ -197,16 +232,28 @@ class WebhookHandler(BaseHTTPRequestHandler):
         self.wfile.write(b'OK')
     
     def serve_status(self):
-        """Serve status endpoint"""
+        """Serve status information as JSON"""
         try:
-            status_data = self.manager.get_status_data()
+            status = {
+                'autoEnabled': self.manager.auto_enabled,
+                'intervalMinutes': self.manager.interval_minutes,
+                'uptime': time.time() - self.manager.start_time,
+                'lastLocations': self.manager.last_locations,
+                'lastCars': self.manager.last_cars,
+                'lastLoads': self.manager.last_loads,
+                'lastProcessed': self.manager.last_processed,
+                'webhookServer': 'Running',
+                'timestamp': datetime.now().isoformat()
+            }
+            
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
             self.send_header('Access-Control-Allow-Origin', '*')
             self.end_headers()
-            self.wfile.write(json.dumps(status_data, indent=2).encode())
+            self.wfile.write(json.dumps(status, indent=2).encode())
+            
         except Exception as e:
-            self.send_error(500, f"Failed to serve status: {e}")
+            self.send_error(500, f"Status error: {e}")
     
     def serve_adb_ips(self):
         """Serve ADB IP list"""
@@ -351,6 +398,30 @@ class BTTAutoManager:
                 self.log_webhook(f"Failed to connect to {ip}: {e}")
         
         return False
+    
+    def test_adb_connection(self, ip):
+        """Test if an ADB device is connected at the specified IP"""
+        try:
+            # First try to connect to the IP
+            result = subprocess.run(f'adb connect {ip}', shell=True, capture_output=True, text=True, timeout=10)
+            if result.returncode == 0 and 'connected' in result.stdout.lower():
+                # Now check if the device is actually connected
+                devices_result = subprocess.run('adb devices', shell=True, capture_output=True, text=True, timeout=5)
+                if devices_result.returncode == 0:
+                    lines = devices_result.stdout.splitlines()
+                    for line in lines[1:]:  # Skip the first line (header)
+                        if ip in line and 'device' in line and 'offline' not in line:
+                            self.log_webhook(f"ADB connection test PASS for {ip}")
+                            return True
+                
+                self.log_webhook(f"ADB connection test FAIL for {ip} - device not found in device list")
+                return False
+            else:
+                self.log_webhook(f"ADB connection test FAIL for {ip} - connection failed")
+                return False
+        except Exception as e:
+            self.log_webhook(f"ADB connection test ERROR for {ip}: {e}")
+            return False
     
     def log_webhook(self, message):
         """Log webhook activity"""
