@@ -13,6 +13,8 @@ function App() {
   const [newIP, setNewIP] = useState('');
   const [updateInterval, setUpdateInterval] = useState(5);
   const [autoUpdateEnabled, setAutoUpdateEnabled] = useState(false);
+  const [extractionModalOpen, setExtractionModalOpen] = useState(false);
+  const [extractionResult, setExtractionResult] = useState(null);
 
   // Utility functions
   const apiCall = async (endpoint, method = 'GET', data = null) => {
@@ -130,7 +132,8 @@ function App() {
     if (result.error) {
       showMessage(`Error: ${result.error}`, 'error');
     } else {
-      showMessage('SQL extraction started');
+      setExtractionResult(result.extractionResult || { message: result.message });
+      setExtractionModalOpen(true);
       setTimeout(() => {
         fetchStatus();
         fetchSQLData();
@@ -451,6 +454,28 @@ function App() {
           </div>
         </div>
       </div>
+      {/* Extraction Result Modal */}
+      {extractionModalOpen && (
+        <div className="modal-overlay" onClick={() => setExtractionModalOpen(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <h2>SQL Extraction Result</h2>
+            {extractionResult && (
+              <div style={{ maxHeight: '60vh', overflowY: 'auto', textAlign: 'left', fontSize: '0.95em' }}>
+                <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                  {extractionResult.success === true ? '✅ Extraction Succeeded\n' : ''}
+                  {extractionResult.success === false ? '❌ Extraction Failed\n' : ''}
+                  {extractionResult.stdout ? `\n[stdout]\n${extractionResult.stdout}` : ''}
+                  {extractionResult.stderr ? `\n[stderr]\n${extractionResult.stderr}` : ''}
+                  {extractionResult.log ? `\n[getsql.log]\n${extractionResult.log}` : ''}
+                  {extractionResult.error ? `\n[error]\n${extractionResult.error}` : ''}
+                  {extractionResult.message ? `\n${extractionResult.message}` : ''}
+                </pre>
+              </div>
+            )}
+            <button className="button" onClick={() => setExtractionModalOpen(false)} style={{ marginTop: 16 }}>Close</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

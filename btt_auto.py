@@ -117,8 +117,8 @@ class WebhookHandler(BaseHTTPRequestHandler):
                 self.manager.set_interval(minutes)
                 response = {'status': 'success', 'message': f'Interval set to {minutes} minutes'}
             elif action == 'run_extraction':
-                self.manager.run_getsql_webhook()
-                response = {'status': 'success', 'message': 'SQL extraction started'}
+                extraction_result = self.manager.run_getsql_webhook()
+                response = {'status': 'success', 'message': 'SQL extraction finished', 'extractionResult': extraction_result}
             elif action == 'update_status':
                 self.manager.update_last_stats()
                 response = {'status': 'success', 'message': 'Status updated'}
@@ -280,13 +280,13 @@ class WebhookHandler(BaseHTTPRequestHandler):
             
             # Build status with safe attribute access
             status = {
-                'autoEnabled': getattr(self.manager, 'auto_enabled', False),
-                'intervalMinutes': getattr(self.manager, 'interval_minutes', 5),
+                'autoEnabled': self.manager.config.get('auto_enabled', False),
+                'intervalMinutes': self.manager.config.get('interval_minutes', 5),
                 'uptime': time.time() - getattr(self.manager, 'start_time', time.time()),
-                'lastLocations': getattr(self.manager, 'last_locations', 0),
-                'lastCars': getattr(self.manager, 'last_cars', 0),
-                'lastLoads': getattr(self.manager, 'last_loads', 0),
-                'lastProcessed': getattr(self.manager, 'last_processed', None),
+                'lastLocations': self.manager.config.get('last_locations', 0),
+                'lastCars': self.manager.config.get('last_cars', 0),
+                'lastLoads': self.manager.config.get('last_loads', 0),
+                'lastProcessed': self.manager.config.get('last_sql_atime', None),
                 'webhookServer': 'Running',
                 'timestamp': datetime.now().isoformat(),
                 'adbConnected': any_connected
@@ -448,7 +448,7 @@ class BTTAutoManager:
                 self.save_config()
                 self.log_webhook(f"Removed ADB IP: {ip}")
                 console.print(f"[yellow]Removed ADB IP: {ip}[/yellow]")
-                break
+            break
     
     def rename_adb_device(self, ip, name):
         """Rename an ADB device"""
@@ -752,31 +752,40 @@ class BTTAutoManager:
             console.print(f"[yellow]Warning: Could not update stats: {e}[/yellow]")
     
     def run_getsql(self):
-        """Run the getsql program"""
+        """Run the getsql program and return output"""
         try:
             console.print("[blue]Running SQL extraction...[/blue]")
             result = subprocess.run([sys.executable, 'getsql.py'], 
                                   capture_output=True, text=True, cwd=os.path.dirname(__file__))
-            
+            # Read getsql.log if it exists
+            log_path = os.path.join(os.path.dirname(__file__), 'getsql.log')
+            log_content = None
+            if os.path.exists(log_path):
+                with open(log_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    log_content = f.read()
+            output = {
+                'stdout': result.stdout,
+                'stderr': result.stderr,
+                'returncode': result.returncode,
+                'log': log_content
+            }
             if result.returncode == 0:
                 console.print("[green]SQL extraction completed successfully[/green]")
                 self.last_run = datetime.now()
                 self.update_last_stats()
+                output['success'] = True
             else:
                 console.print(f"[red]SQL extraction failed: {result.stderr}[/red]")
-                
+                output['success'] = False
+            return output
         except Exception as e:
             console.print(f"[red]Error running getsql: {e}[/red]")
-    
+            return {'success': False, 'error': str(e)}
+
     def run_getsql_webhook(self):
-        """Run getsql for webhook calls"""
-        try:
-            self.log_webhook("SQL extraction started via webhook")
-            # Run in a separate thread to avoid blocking
-            thread = threading.Thread(target=self.run_getsql, daemon=True)
-            thread.start()
-        except Exception as e:
-            self.log_webhook(f"Error starting SQL extraction via webhook: {e}")
+        """Run getsql for webhook calls synchronously and return output"""
+        self.log_webhook("SQL extraction started via webhook")
+        return self.run_getsql()
     
     def toggle_auto_update_webhook(self):
         """Toggle auto-update for webhook calls"""
@@ -793,7 +802,7 @@ class BTTAutoManager:
                 # Check if auto is still enabled
                 if not self.config.get("auto_enabled", False):
                     break
-
+                
                 # Try to connect to ADB devices if needed
                 if not getsql.get_connected_device():
                     connected = self.try_connect_adb_ips()
@@ -803,14 +812,14 @@ class BTTAutoManager:
                         console.print(msg)
                         time.sleep(60)
                         continue
-
+                
                 # Run getsql
                 self.run_getsql()
-
+                
                 # Wait for next interval
                 interval_seconds = self.config.get("interval_minutes", 5) * 60
                 time.sleep(interval_seconds)
-
+                
             except Exception as e:
                 console.print(f"[red]Auto-update error: {e}[/red]")
                 time.sleep(60)  # Wait 1 minute before retrying

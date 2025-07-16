@@ -66,8 +66,19 @@ def run_adb_with_root(cmd, device, timeout=10):
     except Exception as e:
         log(f"Non-root command error: {e}\n{traceback.format_exc()}")
         return None, 'non-root', f"Non-root error: {e}"
-    # Try su -c ...
+    
+    # Try su 0 (works on some devices)
     shell_part = cmd.split('shell',1)[1].strip() if 'shell' in cmd else cmd
+    su0_cmd = f'adb -s {device} shell su 0 {shell_part}'
+    try:
+        su0_out = run_adb(su0_cmd, timeout=timeout)
+        if su0_out is not None and 'Permission denied' not in str(su0_out):
+            return su0_out, 'su0', None
+    except Exception as e:
+        log(f"Su0 command error: {e}\n{traceback.format_exc()}")
+        return None, 'su0', f"Su0 error: {e}"
+    
+    # Try su -c (works on other devices)
     rootc_cmd = f'adb -s {device} shell su -c "{shell_part}"'
     try:
         rootc_out = run_adb(rootc_cmd, timeout=timeout)
@@ -76,6 +87,7 @@ def run_adb_with_root(cmd, device, timeout=10):
     except Exception as e:
         log(f"RootC command error: {e}\n{traceback.format_exc()}")
         return None, 'suc', f"RootC error: {e}"
+    
     return None, 'all-failed', 'All root forms failed'
 
 def check_device_db_exists(device):
@@ -90,15 +102,17 @@ def check_device_db_exists(device):
 
 def copy_to_sdcard(device, use_root=False):
     dst = '/sdcard/sql.db'
-    if use_root == 'suc':
+    if use_root == 'su0':
+        copy_cmd = f'adb -s {device} shell su 0 cp {DEVICE_DB_PATH} {dst}'
+    elif use_root == 'suc':
         copy_cmd = f'adb -s {device} shell su -c "cp {DEVICE_DB_PATH} {dst}"'
     else:
         copy_cmd = f'adb -s {device} shell cp "{DEVICE_DB_PATH}" "{dst}"'
     out = run_adb(copy_cmd, timeout=15)
     if out is None:
-        log(f"Failed to copy sql.db to /sdcard ({'root' if use_root == 'suc' else 'non-root'})")
+        log(f"Failed to copy sql.db to /sdcard ({'root' if use_root in ['su0', 'suc'] else 'non-root'})")
         return False
-    log(f"Copied sql.db to /sdcard ({'root' if use_root == 'suc' else 'non-root'})")
+    log(f"Copied sql.db to /sdcard ({'root' if use_root in ['su0', 'suc'] else 'non-root'})")
     return True
 
 def delete_sdcard_db(device, use_root=False):
