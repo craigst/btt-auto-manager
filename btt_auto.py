@@ -530,6 +530,7 @@ class BTTAutoManager:
         self.webhook_server = None
         self.webhook_thread = None
         self.webhook_logs = []
+        self.next_update_time = None
         
         # Initialize attributes from config with safe defaults
         self.auto_enabled = self.config.get('auto_enabled', False)
@@ -853,7 +854,7 @@ class BTTAutoManager:
         
         time_since_last_update = None
         time_since_last_update_formatted = None
-        next_update_time = None
+        next_update_time = self.next_update_time.isoformat() if self.next_update_time else None
         
         if last_processed:
             try:
@@ -864,7 +865,8 @@ class BTTAutoManager:
                 
                 # Calculate next update time based on interval
                 interval_minutes = self.config.get('interval_minutes', 5)
-                next_update_time = last_time.replace(tzinfo=None) + timedelta(minutes=interval_minutes)
+                if not next_update_time and self.config.get('auto_enabled', False):
+                    next_update_time = (last_time.replace(tzinfo=None) + timedelta(minutes=interval_minutes)).isoformat()
             except:
                 pass
         
@@ -873,7 +875,7 @@ class BTTAutoManager:
             'lastProcessed': last_processed,
             'timeSinceLastUpdate': time_since_last_update,
             'timeSinceLastUpdateFormatted': time_since_last_update_formatted,
-            'nextUpdateTime': next_update_time.isoformat() if next_update_time else None,
+            'nextUpdateTime': next_update_time,
             'dwjjobCount': len(self.extracted_data.get('DWJJOB', [])),
             'dwvvehCount': len(self.extracted_data.get('DWVVEH', [])),
             'serverTime': now.isoformat(),
@@ -1041,7 +1043,6 @@ class BTTAutoManager:
         self.log_webhook(f"DEBUG: auto_update_loop started. running={self.running}, auto_enabled={self.config.get('auto_enabled', False)}")
         while self.running:
             try:
-                # Check if auto is still enabled
                 auto_enabled = self.config.get("auto_enabled", False)
                 self.log_webhook(f"DEBUG: auto_update_loop check. running={self.running}, auto_enabled={auto_enabled}")
                 if not auto_enabled:
@@ -1061,28 +1062,33 @@ class BTTAutoManager:
                 # Run getsql
                 self.run_getsql()
                 
-                # Wait for next interval
+                # Set next update time
                 interval_seconds = self.config.get("interval_minutes", 5) * 60
+                self.next_update_time = datetime.now() + timedelta(seconds=interval_seconds)
+                self.log_webhook(f"DEBUG: Next update scheduled for {self.next_update_time}")
                 time.sleep(interval_seconds)
                 
             except Exception as e:
                 console.print(f"[red]Auto-update error: {e}[/red]")
+                self.log_webhook(f"DEBUG: Exception in auto_update_loop: {e}")
                 time.sleep(60)  # Wait 1 minute before retrying
+        self.running = False
+        self.log_webhook("DEBUG: auto_update_loop exited, running set to False")
     
     def start_auto_update(self):
         """Start the auto-update thread"""
         self.log_webhook(f"DEBUG: start_auto_update called. running={self.running}")
-        if not self.running:
-            self.running = True
-            self.config["auto_enabled"] = True
-            self.save_config()
-            self.log_webhook(f"DEBUG: start_auto_update - config saved. auto_enabled={self.config.get('auto_enabled', False)}")
-            self.auto_thread = threading.Thread(target=self.auto_update_loop, daemon=True)
-            self.auto_thread.start()
-            console.print("[green]Auto-update started[/green]")
-            self.log_webhook("DEBUG: Auto-update thread started")
-        else:
+        if self.running:
             self.log_webhook("DEBUG: start_auto_update - already running, skipping")
+            return
+        self.running = True
+        self.config["auto_enabled"] = True
+        self.save_config()
+        self.log_webhook(f"DEBUG: start_auto_update - config saved. auto_enabled={self.config.get('auto_enabled', False)}")
+        self.auto_thread = threading.Thread(target=self.auto_update_loop, daemon=True)
+        self.auto_thread.start()
+        console.print("[green]Auto-update started[/green]")
+        self.log_webhook("DEBUG: Auto-update thread started")
     
     def stop_auto_update(self):
         """Stop the auto-update thread"""
@@ -1094,6 +1100,7 @@ class BTTAutoManager:
         if self.auto_thread and self.auto_thread.is_alive():
             self.auto_thread.join(timeout=5)
             self.log_webhook("DEBUG: Auto-update thread joined")
+        self.next_update_time = None
         console.print("[yellow]Auto-update stopped[/yellow]")
         self.log_webhook("DEBUG: Auto-update stopped")
     
