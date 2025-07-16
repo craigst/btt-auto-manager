@@ -9,8 +9,8 @@ echo "🚀 Starting BTT Auto Manager..."
 # Create necessary directories if they don't exist
 mkdir -p /app/db /app/logs
 
-# Set proper permissions
-chown -R bttuser:bttuser /app
+# Set proper permissions for app directories (not mounted files)
+chown -R bttuser:bttuser /app/db /app/logs
 
 # Check if ADB is available
 if ! command -v adb &> /dev/null; then
