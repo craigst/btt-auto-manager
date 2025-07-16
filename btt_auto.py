@@ -45,7 +45,11 @@ class WebhookHandler(BaseHTTPRequestHandler):
             parsed_path = urllib.parse.urlparse(self.path)
             path = parsed_path.path
             
-            if path == '/webhook/dwjjob':
+            if path == '/':
+                self.serve_web_ui()
+            elif path == '/webhook/ui':
+                self.serve_web_ui()
+            elif path == '/webhook/dwjjob':
                 self.serve_dwjjob()
             elif path == '/webhook/dwvveh':
                 self.serve_dwvveh()
@@ -203,6 +207,42 @@ class WebhookHandler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps(ips, indent=2).encode())
         except Exception as e:
             self.send_error(500, f"Failed to serve ADB IPs: {e}")
+
+    def serve_web_ui(self):
+        """Serve the web UI HTML page"""
+        try:
+            # Read the web UI HTML file
+            html_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'web_ui.html')
+            if os.path.exists(html_path):
+                with open(html_path, 'r', encoding='utf-8') as f:
+                    html_content = f.read()
+                
+                self.send_response(200)
+                self.send_header('Content-type', 'text/html')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                self.wfile.write(html_content.encode('utf-8'))
+            else:
+                # Fallback HTML if file doesn't exist
+                fallback_html = """
+                <!DOCTYPE html>
+                <html>
+                <head><title>BTT Auto Manager</title></head>
+                <body>
+                <h1>BTT Auto Manager</h1>
+                <p>Web UI file not found. Please check the installation.</p>
+                <p><a href="/status">Status</a> | <a href="/healthz">Health</a></p>
+                </body>
+                </html>
+                """
+                self.send_response(200)
+                self.send_header('Content-type', 'text/html')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                self.wfile.write(fallback_html.encode('utf-8'))
+                
+        except Exception as e:
+            self.send_error(500, f"Failed to serve web UI: {e}")
 
 class BTTAutoManager:
     def __init__(self):
@@ -813,7 +853,7 @@ def main():
         else:
             console.print("[yellow]Auto-update disabled[/yellow]")
         
-        # Keep the application running
+        # Always keep the process alive in Docker
         try:
             while True:
                 time.sleep(1)

@@ -26,8 +26,7 @@ services:
       - ${ADB_DEVICE_PATH:-/dev/bus/usb}:/dev/bus/usb  # USB device access
     privileged: true  # Required for ADB access
     restart: unless-stopped
-    networks:
-      - btt-network
+    network_mode: bridge
     # Override user for ADB access
     user: root
     # Health check
@@ -36,8 +35,4 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
-
-networks:
-  btt-network:
-    driver: bridge 
+      start_period: 40s 
