@@ -19,7 +19,7 @@ services:
       - ENVIRONMENT=${ENVIRONMENT:-production}
       - DEBUG=${DEBUG:-false}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - AUTO_ENABLED=${AUTO_ENABLED:-false}
+      - AUTO_ENABLED=${AUTO_ENABLED:-true}
       - INTERVAL_MINUTES=${INTERVAL_MINUTES:-20}
       - WEBHOOK_ENABLED=${WEBHOOK_ENABLED:-true}
     devices:

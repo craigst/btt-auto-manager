@@ -799,8 +799,33 @@ def main():
     if manager.config.get("webhook_enabled", True):
         manager.start_webhook_server()
     
-    # Show menu
-    manager.show_menu()
+    # Check if running in non-interactive mode (Docker container)
+    import sys
+    if not sys.stdin.isatty():
+        console.print("[yellow]Running in non-interactive mode (Docker container)[/yellow]")
+        console.print("[green]Webhook server started[/green]")
+        console.print(f"[green]Available at: http://localhost:{manager.config.get('webhook_port', WEBHOOK_PORT)}[/green]")
+        
+        # Start auto-update if enabled
+        if manager.config.get("auto_enabled", False):
+            manager.start_auto_update()
+            console.print("[green]Auto-update started[/green]")
+        else:
+            console.print("[yellow]Auto-update disabled[/yellow]")
+        
+        # Keep the application running
+        try:
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            console.print("\n[yellow]Shutting down...[/yellow]")
+            if manager.running:
+                manager.stop_auto_update()
+            if manager.webhook_server:
+                manager.stop_webhook_server()
+    else:
+        # Interactive mode - show menu
+        manager.show_menu()
 
 if __name__ == "__main__":
     main() 
