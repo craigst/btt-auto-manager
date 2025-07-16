@@ -501,7 +501,22 @@ class BTTAutoManager:
         """Test if an ADB device is connected at the specified IP"""
         command_output = ""
         try:
-            # First try to connect to the IP
+            # First ping the IP to check if device is reachable
+            ping_result = subprocess.run(f'ping -c 1 -W 3 {ip.split(":")[0]}', shell=True, capture_output=True, text=True, timeout=5)
+            command_output += f"$ ping -c 1 -W 3 {ip.split(':')[0]}\n"
+            command_output += f"Return code: {ping_result.returncode}\n"
+            command_output += f"Output: {ping_result.stdout}\n"
+            if ping_result.stderr:
+                command_output += f"Error: {ping_result.stderr}\n"
+            
+            if ping_result.returncode != 0:
+                self.log_webhook(f"Ping test FAIL for {ip} - device not reachable")
+                command_output += f"\n❌ Device is not reachable via ping - Android may be offline or device disconnected\n"
+                return False, command_output
+            
+            command_output += f"\n✅ Device is reachable via ping - proceeding with ADB connection test\n\n"
+            
+            # Now try to connect to the IP via ADB
             result = subprocess.run(f'adb connect {ip}', shell=True, capture_output=True, text=True, timeout=10)
             command_output += f"$ adb connect {ip}\n"
             command_output += f"Return code: {result.returncode}\n"
@@ -523,12 +538,15 @@ class BTTAutoManager:
                     for line in lines[1:]:  # Skip the first line (header)
                         if ip in line and 'device' in line and 'offline' not in line:
                             self.log_webhook(f"ADB connection test PASS for {ip}")
+                            command_output += f"\n✅ ADB connection successful - device is online and ready\n"
                             return True, command_output
                 
                 self.log_webhook(f"ADB connection test FAIL for {ip} - device not found in device list")
+                command_output += f"\n❌ ADB connection failed - device not found in device list\n"
                 return False, command_output
             else:
                 self.log_webhook(f"ADB connection test FAIL for {ip} - connection failed")
+                command_output += f"\n❌ ADB connection failed - Android may be offline or ADB not enabled\n"
                 return False, command_output
         except Exception as e:
             command_output += f"\nException: {e}\n"
