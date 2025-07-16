@@ -63,6 +63,8 @@ class WebhookHandler(BaseHTTPRequestHandler):
                 self.serve_status()
             elif path == '/webhook/adb-ips':
                 self.serve_adb_ips()
+            elif path == '/webhook/load-numbers':
+                self.serve_load_numbers()
             else:
                 self.send_error(404, "Endpoint not found")
                 
@@ -320,6 +322,18 @@ class WebhookHandler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps(result, indent=2).encode())
         except Exception as e:
             self.send_error(500, f"Failed to serve ADB IPs: {e}")
+
+    def serve_load_numbers(self):
+        """Serve load numbers as JSON"""
+        try:
+            data = self.manager.get_load_numbers()
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            self.wfile.write(json.dumps(data, indent=2).encode())
+        except Exception as e:
+            self.send_error(500, f"Failed to serve load numbers: {e}")
 
     def serve_web_ui(self):
         """Serve the web UI HTML page"""
@@ -629,6 +643,40 @@ class BTTAutoManager:
     def get_dwvveh_data(self):
         """Get DWVVEH data for webhook"""
         return self.extracted_data.get('DWVVEH', [])
+    
+    def get_load_numbers(self):
+        """Get list of load numbers from DWJJOB data"""
+        try:
+            dwjjob_data = self.extracted_data.get('DWJJOB', [])
+            load_numbers = []
+            
+            # Extract unique load numbers from DWJJOB data
+            seen_loads = set()
+            for record in dwjjob_data:
+                load_number = record.get('dwjLoad')
+                if load_number and load_number not in seen_loads:
+                    seen_loads.add(load_number)
+                    load_numbers.append({
+                        'loadNumber': load_number,
+                        'count': sum(1 for r in dwjjob_data if r.get('dwjLoad') == load_number)
+                    })
+            
+            # Sort by load number
+            load_numbers.sort(key=lambda x: x['loadNumber'])
+            
+            return {
+                'loadNumbers': load_numbers,
+                'totalLoads': len(load_numbers),
+                'totalRecords': len(dwjjob_data)
+            }
+        except Exception as e:
+            self.log_webhook(f"Error getting load numbers: {e}")
+            return {
+                'loadNumbers': [],
+                'totalLoads': 0,
+                'totalRecords': 0,
+                'error': str(e)
+            }
     
     def get_status_data(self):
         """Get status data for webhook"""
