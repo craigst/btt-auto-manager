@@ -52,6 +52,56 @@
             color: #e0e0e0;
             border-bottom: 2px solid #4a90e2;
             padding-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .section-header-controls {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        .auto-update-controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .countdown-timer {
+            font-family: 'Courier New', monospace;
+            font-size: 1.2em;
+            font-weight: bold;
+            padding: 5px 10px;
+            border-radius: 5px;
+            background: #1a1a1a;
+            border: 2px solid #22c55e;
+            color: #22c55e;
+            min-width: 80px;
+            text-align: center;
+        }
+        .countdown-timer.warning {
+            border-color: #fbbf24;
+            color: #fbbf24;
+        }
+        .countdown-timer.danger {
+            border-color: #ef4444;
+            color: #ef4444;
+        }
+        .add-device-btn {
+            background: #22c55e;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 16px;
+            width: 35px;
+            height: 35px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .add-device-btn:hover {
+            background: #16a34a;
         }
         .status-grid {
             display: grid;
@@ -362,7 +412,8 @@
         <div class="header">
             <div style="display: flex; justify-content: space-between; align-items: center;">
                 <div style="display: flex; align-items: center; gap: 10px;">
-                    <img src="./network-server.png" alt="App Icon" class="header-logo" />
+                    <img src="/network-server.png" alt="BTT Auto Manager" class="header-logo" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" />
+                    <div style="display: none; color: white; font-size: 24px; font-weight: bold;">🚀</div>
                     <div>
                         <h1 style="margin:0;display:inline-block;vertical-align:middle;">BTT Auto Manager</h1>
                         <p style="margin:0;">SQL Database Extraction & ADB Management</p>
@@ -377,7 +428,18 @@
         <div class="content">
             <!-- Status Section -->
             <div class="section">
-                <h2>📊 System Status</h2>
+                <h2>
+                    📊 System Status
+                    <div class="section-header-controls">
+                        <div class="auto-update-controls">
+                            <div id="countdown-timer" class="countdown-timer">--:--:--</div>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="auto-update-toggle" onchange="toggleAutoUpdate()">
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                </h2>
                 <div id="status-content" class="loading">Loading status...</div>
             </div>
 
@@ -389,14 +451,13 @@
 
             <!-- ADB IP Management Section -->
             <div class="section">
-                <h2>📱 ADB Device Management</h2>
+                <h2>
+                    📱 ADB Device Management
+                    <div class="section-header-controls">
+                        <button class="add-device-btn" onclick="openAddDeviceModal()" title="Add New Device">+</button>
+                    </div>
+                </h2>
                 <div id="adb-content" class="loading">Loading ADB IPs...</div>
-                
-                <div class="input-group">
-                    <label for="new-ip">Add New ADB IP:</label>
-                    <input type="text" id="new-ip" placeholder="192.168.1.100:5555" />
-                    <button class="button success" onclick="addADBIP()">Add IP</button>
-                </div>
             </div>
         </div>
     </div>
@@ -427,10 +488,10 @@
                     <div class="input-group" style="margin-bottom: 10px;">
                         <label>Auto-Update</label>
                         <label class="toggle-switch">
-                            <input type="checkbox" id="auto-update-toggle" onchange="toggleAutoUpdate()">
+                            <input type="checkbox" id="settings-auto-update-toggle" onchange="toggleAutoUpdate()">
                             <span class="slider"></span>
                         </label>
-                        <span id="auto-update-status" style="margin-left: 10px;">Loading...</span>
+                        <span id="settings-auto-update-status" style="margin-left: 10px;">Loading...</span>
                     </div>
                 </div>
                 <div style="border-bottom: 1px solid #444; padding-bottom: 12px;">
@@ -448,6 +509,31 @@
                     <button class="button" onclick="updateStatus()">Update Status</button>
                 </div>
                 <div id="control-result"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for Adding New Device -->
+    <div id="addDeviceModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title">📱 Add New ADB Device</div>
+                <span class="close" onclick="closeAddDeviceModal()">&times;</span>
+            </div>
+            <div id="addDeviceContent">
+                <div class="input-group">
+                    <label for="new-device-ip">Device IP Address:</label>
+                    <input type="text" id="new-device-ip" placeholder="192.168.1.100:5555" />
+                </div>
+                <div class="input-group">
+                    <label for="new-device-name">Device Name (Optional):</label>
+                    <input type="text" id="new-device-name" placeholder="My Android Device" />
+                </div>
+                <div style="margin-top: 20px;">
+                    <button class="button success" onclick="addNewDevice()">Add Device</button>
+                    <button class="button" onclick="closeAddDeviceModal()">Cancel</button>
+                </div>
+                <div id="add-device-result"></div>
             </div>
         </div>
     </div>
@@ -523,8 +609,9 @@
                 `;
                 statusDiv.innerHTML = html;
                 
-                // Update the toggle switch and interval input
+                // Update the toggle switches and start countdown
                 updateControlElements(status);
+                startAutoUpdateCountdown(status);
                 
             } catch (error) {
                 statusDiv.innerHTML = `<div class="error">Error loading status: ${error.message}</div>`;
@@ -532,19 +619,76 @@
         }
 
         function updateControlElements(status) {
-            // Update toggle switch
+            // Update toggle switches
             const toggle = document.getElementById('auto-update-toggle');
-            const statusText = document.getElementById('auto-update-status');
-            if (toggle && statusText) {
+            const settingsToggle = document.getElementById('settings-auto-update-toggle');
+            const statusText = document.getElementById('settings-auto-update-status');
+            
+            if (toggle) {
                 toggle.checked = status.autoEnabled || false;
+            }
+            if (settingsToggle) {
+                settingsToggle.checked = status.autoEnabled || false;
+            }
+            if (statusText) {
                 statusText.textContent = status.autoEnabled ? 'Enabled' : 'Disabled';
             }
-            
-            // Update interval input
-            const intervalInput = document.getElementById('update-interval');
-            if (intervalInput) {
-                intervalInput.value = status.intervalMinutes || 5;
+        }
+
+        // Auto-update countdown functionality
+        let countdownInterval = null;
+        let nextUpdateTime = null;
+        
+        function startAutoUpdateCountdown(status) {
+            if (countdownInterval) {
+                clearInterval(countdownInterval);
             }
+            
+            if (!status.autoEnabled) {
+                document.getElementById('countdown-timer').textContent = '--:--:--';
+                return;
+            }
+            
+            const intervalMinutes = status.intervalMinutes || 5;
+            const lastProcessed = status.lastProcessed ? new Date(status.lastProcessed) : new Date();
+            nextUpdateTime = new Date(lastProcessed.getTime() + (intervalMinutes * 60 * 1000));
+            
+            function updateCountdown() {
+                const now = new Date();
+                const timeLeft = Math.max(0, nextUpdateTime.getTime() - now.getTime());
+                
+                if (timeLeft <= 0) {
+                    document.getElementById('countdown-timer').textContent = '00:00:00';
+                    document.getElementById('countdown-timer').className = 'countdown-timer danger';
+                    // Reset countdown for next interval
+                    nextUpdateTime = new Date(now.getTime() + (intervalMinutes * 60 * 1000));
+                    return;
+                }
+                
+                const hours = Math.floor(timeLeft / (1000 * 60 * 60));
+                const minutes = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
+                const seconds = Math.floor((timeLeft % (1000 * 60)) / 1000);
+                
+                const timeString = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                const countdownElement = document.getElementById('countdown-timer');
+                
+                countdownElement.textContent = timeString;
+                
+                // Color coding based on time remaining
+                const totalSeconds = timeLeft / 1000;
+                const intervalSeconds = intervalMinutes * 60;
+                
+                if (totalSeconds > intervalSeconds * 0.6) {
+                    countdownElement.className = 'countdown-timer';
+                } else if (totalSeconds > intervalSeconds * 0.3) {
+                    countdownElement.className = 'countdown-timer warning';
+                } else {
+                    countdownElement.className = 'countdown-timer danger';
+                }
+            }
+            
+            updateCountdown();
+            countdownInterval = setInterval(updateCountdown, 1000);
         }
 
         // SQL Data functions
@@ -751,6 +895,31 @@
             }
         }
 
+        async function addNewDevice() {
+            const ip = document.getElementById('new-device-ip').value.trim();
+            const name = document.getElementById('new-device-name').value.trim();
+            
+            if (!ip) {
+                showMessage('add-device-result', 'Please enter an IP address', 'error');
+                return;
+            }
+            
+            const result = await apiCall('/webhook/adb-ips', 'POST', {
+                action: 'add',
+                ip: ip,
+                name: name || null
+            });
+            
+            if (result.error) {
+                showMessage('add-device-result', `Error adding device: ${result.error}`, 'error');
+            } else {
+                showMessage('add-device-result', `Successfully added device: ${ip}`, 'success');
+                closeAddDeviceModal();
+                refreshADBIPs();
+                refreshPreferredDevice(); // Update the preferred device dropdown
+            }
+        }
+
         async function addADBIP() {
             const ip = document.getElementById('new-ip').value.trim();
             if (!ip) {
@@ -884,6 +1053,7 @@
                 // Refresh status to update the controls
                 refreshStatus();
                 refreshADBIPs(); // Refresh ADB IPs to populate the dropdown
+                refreshPreferredDevice(); // Populate the preferred device dropdown
             }
         }
 
@@ -894,15 +1064,37 @@
             }
         }
 
+        function openAddDeviceModal() {
+            const modal = document.getElementById('addDeviceModal');
+            if (modal) {
+                modal.style.display = 'block';
+                // Clear previous inputs
+                document.getElementById('new-device-ip').value = '';
+                document.getElementById('new-device-name').value = '';
+                document.getElementById('add-device-result').innerHTML = '';
+            }
+        }
+
+        function closeAddDeviceModal() {
+            const modal = document.getElementById('addDeviceModal');
+            if (modal) {
+                modal.style.display = 'none';
+            }
+        }
+
         // Close modals when clicking outside of them
         window.onclick = function(event) {
             const adbModal = document.getElementById('adbModal');
             const settingsModal = document.getElementById('settingsModal');
+            const addDeviceModal = document.getElementById('addDeviceModal');
             if (event.target === adbModal) {
                 closeModal();
             }
             if (event.target === settingsModal) {
                 closeSettings();
+            }
+            if (event.target === addDeviceModal) {
+                closeAddDeviceModal();
             }
         }
 
@@ -1100,9 +1292,10 @@
                 preferredDeviceSelect.innerHTML += `<option value="${ip}">${name} (${ip})</option>`;
             });
 
-            const currentPreferredIp = localStorage.getItem('preferredDeviceIp');
-            if (currentPreferredIp) {
-                preferredDeviceSelect.value = currentPreferredIp;
+            // Get current preferred device from status
+            const status = await apiCall('/status');
+            if (!status.error && status.preferredDevice) {
+                preferredDeviceSelect.value = status.preferredDevice;
             }
         }
 
@@ -1124,7 +1317,6 @@
                 showMessage('control-result', `Error setting preferred device: ${result.error}`, 'error');
             } else {
                 showMessage('control-result', `Preferred device set to: ${result.preferredDeviceName || selectedIp}`, 'success');
-                localStorage.setItem('preferredDeviceIp', selectedIp);
                 refreshStatus(); // Refresh status to show the new preferred device status
             }
         }

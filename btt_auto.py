@@ -16,11 +16,126 @@ from rich.layout import Layout
 from rich import box
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import urllib.parse
-import getsql
+# Consolidated functions from getsql.py
 
 # Configuration file
 CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'btt_config.json')
 console = Console()
+
+# Consolidated functions from getsql.py
+DB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'db')
+LOCAL_DB_PATH = os.path.join(DB_DIR, 'sql.db')
+DEVICE_DB_PATH = '/data/data/com.bca.bcatrack/cache/cache/data/sql.db'
+
+def run_adb(cmd, timeout=15, capture_output=True):
+    """Run ADB command with error handling"""
+    try:
+        result = subprocess.run(cmd, shell=True, capture_output=capture_output, text=True, timeout=timeout)
+        if result.returncode != 0:
+            return None
+        return result.stdout.strip() if capture_output else True
+    except subprocess.TimeoutExpired:
+        return None
+    except Exception as e:
+        return None
+
+def get_connected_device():
+    """Get the first connected ADB device"""
+    out = run_adb('adb devices')
+    if not isinstance(out, str):
+        return None
+    lines = out.splitlines()
+    for line in lines[1:]:
+        if line.strip() and ('device' in line and not 'offline' in line):
+            return line.split()[0]
+    return None
+
+def run_adb_with_root(cmd, device, timeout=10):
+    """Run ADB command with root access fallback"""
+    # Try non-root first
+    try:
+        out = run_adb(cmd, timeout=timeout)
+        if out is not None and 'Permission denied' not in str(out):
+            return out, 'non-root', None
+    except Exception as e:
+        return None, 'non-root', f"Non-root error: {e}"
+    
+    # Try su 0 (works on some devices)
+    shell_part = cmd.split('shell',1)[1].strip() if 'shell' in cmd else cmd
+    su0_cmd = f'adb -s {device} shell su 0 {shell_part}'
+    try:
+        su0_out = run_adb(su0_cmd, timeout=timeout)
+        if su0_out is not None and 'Permission denied' not in str(su0_out):
+            return su0_out, 'su0', None
+    except Exception as e:
+        return None, 'su0', f"Su0 error: {e}"
+    
+    # Try su -c (works on other devices)
+    rootc_cmd = f'adb -s {device} shell su -c "{shell_part}"'
+    try:
+        rootc_out = run_adb(rootc_cmd, timeout=timeout)
+        if rootc_out is not None and 'Permission denied' not in str(rootc_out):
+            return rootc_out, 'suc', None
+    except Exception as e:
+        return None, 'suc', f"RootC error: {e}"
+    
+    return None, 'all-failed', 'All root forms failed'
+
+def copy_to_sdcard(device, use_root=False):
+    """Copy database from device to sdcard"""
+    dst = '/sdcard/sql.db'
+    if use_root == 'su0':
+        copy_cmd = f'adb -s {device} shell su 0 cp {DEVICE_DB_PATH} {dst}'
+    elif use_root == 'suc':
+        copy_cmd = f'adb -s {device} shell su -c "cp {DEVICE_DB_PATH} {dst}"'
+    else:
+        copy_cmd = f'adb -s {device} shell cp "{DEVICE_DB_PATH}" "{dst}"'
+    out = run_adb(copy_cmd, timeout=15)
+    return out is not None
+
+def pull_from_sdcard(device):
+    """Pull database from sdcard to local"""
+    if not os.path.exists(DB_DIR):
+        os.makedirs(DB_DIR)
+    pull_cmd = f'adb -s {device} pull /sdcard/sql.db "{LOCAL_DB_PATH}"'
+    out = run_adb(pull_cmd, timeout=30)
+    return os.path.exists(LOCAL_DB_PATH)
+
+def extract_sqlite_data_from_device():
+    """Main extraction function from getsql.py"""
+    try:
+        # Check ADB
+        if not run_adb('adb version'):
+            return "ADB not available"
+        
+        # Get connected device
+        device = get_connected_device()
+        if not device:
+            return "No ADB device connected"
+        
+        # Check if database exists on device
+        cmd = f'adb -s {device} shell ls -l "{DEVICE_DB_PATH}"'
+        out, used_root, err = run_adb_with_root(cmd, device, timeout=10)
+        
+        if not out or 'No such file' in str(out) or 'Permission denied' in str(out):
+            return f"Database not found on device: {err or 'File not accessible'}"
+        
+        # Copy to sdcard
+        if not copy_to_sdcard(device, used_root):
+            return "Failed to copy database to sdcard"
+        
+        # Pull from sdcard
+        if not pull_from_sdcard(device):
+            return "Failed to pull database from sdcard"
+        
+        # Clean up sdcard
+        cleanup_cmd = f'adb -s {device} shell rm /sdcard/sql.db'
+        run_adb(cleanup_cmd, timeout=10)
+        
+        return "SUCCESS"
+        
+    except Exception as e:
+        return f"Extraction error: {str(e)}"
 
 # Webhook server configuration
 WEBHOOK_PORT = 5680
@@ -65,6 +180,8 @@ class WebhookHandler(BaseHTTPRequestHandler):
                 self.serve_adb_ips()
             elif path == '/webhook/load-numbers':
                 self.serve_load_numbers()
+            elif path == '/network-server.png':
+                self.serve_icon()
             else:
                 self.send_error(404, "Endpoint not found")
                 
@@ -124,6 +241,13 @@ class WebhookHandler(BaseHTTPRequestHandler):
             elif action == 'update_status':
                 self.manager.update_last_stats()
                 response = {'status': 'success', 'message': 'Status updated'}
+            elif action == 'set_preferred_device':
+                ip = data.get('ip')
+                if ip:
+                    result = self.manager.set_preferred_device(ip)
+                    response = {'status': 'success', 'message': f'Preferred device set to {ip}', 'preferredDeviceName': result}
+                else:
+                    response = {'status': 'error', 'message': 'IP address required'}
             else:
                 response = {'status': 'error', 'message': 'Invalid action'}
             
@@ -291,7 +415,8 @@ class WebhookHandler(BaseHTTPRequestHandler):
                 'lastProcessed': self.manager.config.get('last_sql_atime', None),
                 'webhookServer': 'Running',
                 'timestamp': datetime.now().isoformat(),
-                'adbConnected': any_connected
+                'adbConnected': any_connected,
+                'preferredDevice': self.manager.config.get('preferred_device', None)
             }
             
             self.send_response(200)
@@ -334,6 +459,25 @@ class WebhookHandler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps(data, indent=2).encode())
         except Exception as e:
             self.send_error(500, f"Failed to serve load numbers: {e}")
+
+    def serve_icon(self):
+        """Serve the application icon"""
+        try:
+            icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'network-server.png')
+            if os.path.exists(icon_path):
+                with open(icon_path, 'rb') as f:
+                    icon_content = f.read()
+                
+                self.send_response(200)
+                self.send_header('Content-type', 'image/png')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.send_header('Cache-Control', 'public, max-age=86400')
+                self.end_headers()
+                self.wfile.write(icon_content)
+            else:
+                self.send_error(404, "Icon file not found")
+        except Exception as e:
+            self.send_error(500, f"Failed to serve icon: {e}")
 
     def serve_web_ui(self):
         """Serve the web UI HTML page"""
@@ -411,7 +555,8 @@ class BTTAutoManager:
             "last_loads": 0,
             "webhook_enabled": True,
             "webhook_port": WEBHOOK_PORT,
-            "adb_ips": []
+            "adb_ips": [],
+            "preferred_device": None
         }
         
         if os.path.exists(CONFIG_FILE):
@@ -480,6 +625,27 @@ class BTTAutoManager:
                 self.log_webhook(f"Renamed ADB device {ip} to: {name}")
                 console.print(f"[green]Renamed ADB device {ip} to: {name}[/green]")
                 break
+    
+    def set_preferred_device(self, ip):
+        """Set the preferred ADB device for extraction"""
+        adb_ips = self.config.get('adb_ips', [])
+        device_name = None
+        
+        # Find the device and get its name
+        for device in adb_ips:
+            device_ip = device.get('ip', device)
+            if device_ip == ip:
+                device_name = device.get('name', ip) if isinstance(device, dict) else ip
+                break
+        
+        # Set as preferred device
+        self.config['preferred_device'] = ip
+        self.save_config()
+        
+        self.log_webhook(f"Set preferred device to: {ip} ({device_name})")
+        console.print(f"[green]Set preferred device to: {ip} ({device_name})[/green]")
+        
+        return device_name
     
     def get_adb_ips(self):
         """Get list of ADB IP addresses with names"""
@@ -776,58 +942,67 @@ class BTTAutoManager:
     def update_last_stats(self):
         """Update last known statistics from the database"""
         try:
-            db_path = getsql.LOCAL_DB_PATH
+            db_path = LOCAL_DB_PATH
             if os.path.exists(db_path):
                 # Get file stats
                 stat = os.stat(db_path)
                 atime = datetime.fromtimestamp(stat.st_atime).strftime('%Y-%m-%d %H:%M:%S')
                 
                 # Get database counts
-                counts, _ = getsql.get_db_counts(db_path)
+                conn = sqlite3.connect(db_path)
+                cursor = conn.cursor()
+                
+                # Get DWJJOB count
+                cursor.execute("SELECT COUNT(*) FROM DWJJOB")
+                locations = cursor.fetchone()[0]
+                
+                # Get DWVVEH count
+                cursor.execute("SELECT COUNT(*) FROM DWVVEH")
+                cars = cursor.fetchone()[0]
+                
+                # Get unique loads count
+                cursor.execute("SELECT COUNT(DISTINCT dwjLoad) FROM DWJJOB WHERE dwjLoad IS NOT NULL")
+                loads = cursor.fetchone()[0]
+                
+                conn.close()
                 
                 # Extract data for webhooks
                 self.extract_sqlite_data(db_path)
                 
                 self.config.update({
                     "last_sql_atime": atime,
-                    "last_locations": counts.get('DWJJOB', 0),
-                    "last_cars": counts.get('DWVVEH', 0),
-                    "last_loads": counts.get('unique_loads', 0)
+                    "last_locations": locations,
+                    "last_cars": cars,
+                    "last_loads": loads
                 })
                 self.save_config()
-                self.last_stats = counts
+                self.last_stats = {'DWJJOB': locations, 'DWVVEH': cars, 'unique_loads': loads}
         except Exception as e:
             console.print(f"[yellow]Warning: Could not update stats: {e}[/yellow]")
     
     def run_getsql(self):
-        """Run the getsql program and return output"""
+        """Run the SQL extraction process"""
         try:
             console.print("[blue]Running SQL extraction...[/blue]")
-            result = subprocess.run([sys.executable, 'getsql.py'], 
-                                  capture_output=True, text=True, cwd=os.path.dirname(__file__))
-            # Read getsql.log if it exists
-            log_path = os.path.join(os.path.dirname(__file__), 'getsql.log')
-            log_content = None
-            if os.path.exists(log_path):
-                with open(log_path, 'r', encoding='utf-8', errors='ignore') as f:
-                    log_content = f.read()
+            
+            # Use the consolidated extraction function
+            result = extract_sqlite_data_from_device()
+            
             output = {
-                'stdout': result.stdout,
-                'stderr': result.stderr,
-                'returncode': result.returncode,
-                'log': log_content
+                'result': result,
+                'success': result == "SUCCESS"
             }
-            if result.returncode == 0:
+            
+            if result == "SUCCESS":
                 console.print("[green]SQL extraction completed successfully[/green]")
                 self.last_run = datetime.now()
                 self.update_last_stats()
-                output['success'] = True
             else:
-                console.print(f"[red]SQL extraction failed: {result.stderr}[/red]")
-                output['success'] = False
+                console.print(f"[red]SQL extraction failed: {result}[/red]")
+            
             return output
         except Exception as e:
-            console.print(f"[red]Error running getsql: {e}[/red]")
+            console.print(f"[red]Error running SQL extraction: {e}[/red]")
             return {'success': False, 'error': str(e)}
 
     def run_getsql_webhook(self):
@@ -852,7 +1027,7 @@ class BTTAutoManager:
                     break
                 
                 # Try to connect to ADB devices if needed
-                if not getsql.get_connected_device():
+                if not get_connected_device():
                     connected = self.try_connect_adb_ips()
                     if not connected:
                         msg = "[yellow]No ADB device connected. Retrying in 60 seconds...[/yellow]"

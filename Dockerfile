@@ -24,8 +24,6 @@ COPY requirements.txt .
 RUN pip3 install --no-cache-dir -r requirements.txt
 
 # Copy Python application files and assets
-COPY btt_launcher.py .
-COPY getsql.py .
 COPY btt_auto.py .
 COPY web_ui.html .
 COPY network-server.png .
