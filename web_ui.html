@@ -358,12 +358,6 @@
                 <div id="sql-content" class="loading">Loading SQL data...</div>
             </div>
 
-            <!-- Load Numbers Section -->
-            <div class="section">
-                <h2>📋 Load Numbers <button class="refresh-btn" onclick="refreshLoadNumbers()">🔄 Refresh</button></h2>
-                <div id="load-numbers-content" class="loading">Loading load numbers...</div>
-            </div>
-
             <!-- ADB IP Management Section -->
             <div class="section">
                 <h2>📱 ADB Device Management <button class="refresh-btn" onclick="refreshADBIPs()">🔄 Refresh</button></h2>
@@ -547,9 +541,10 @@
             sqlDiv.innerHTML = '<div class="loading">Loading SQL data...</div>';
             
             try {
-                const [dwjjob, dwvveh] = await Promise.all([
+                const [dwjjob, dwvveh, loadNumbers] = await Promise.all([
                     apiCall('/webhook/dwjjob'),
-                    apiCall('/webhook/dwvveh')
+                    apiCall('/webhook/dwvveh'),
+                    apiCall('/webhook/load-numbers')
                 ]);
                 
                 let html = '<div class="status-grid">';
@@ -580,12 +575,26 @@
                     `;
                 }
                 
+                // Load Numbers Data
+                if (loadNumbers.error) {
+                    html += `<div class="status-card"><h3>Load Numbers</h3><div class="error">Error: ${loadNumbers.error}</div></div>`;
+                } else {
+                    html += `
+                        <div class="status-card">
+                            <h3>Load Numbers (${loadNumbers.totalLoads || 0} unique)</h3>
+                            <div class="status-value">${loadNumbers.totalRecords || 0} total records</div>
+                            ${loadNumbers.totalLoads > 0 ? `<button class="button" onclick="showLoadNumbersData()">View Details</button>` : ''}
+                        </div>
+                    `;
+                }
+                
                 html += '</div>';
                 sqlDiv.innerHTML = html;
                 
                 // Store data for detail views
                 window.dwjjobData = dwjjob;
                 window.dwvvehData = dwvveh;
+                window.loadNumbersData = loadNumbers;
                 
             } catch (error) {
                 sqlDiv.innerHTML = `<div class="error">Error loading SQL data: ${error.message}</div>`;
@@ -647,6 +656,26 @@
                 html += '</tbody></table>';
             }
             
+            document.getElementById('sql-content').innerHTML = html + '<button class="button" onclick="refreshSQLData()">← Back to Summary</button>';
+        }
+
+        function showLoadNumbersData() {
+            if (!window.loadNumbersData || !window.loadNumbersData.loadNumbers || window.loadNumbersData.loadNumbers.length === 0) {
+                alert('No load numbers data available');
+                return;
+            }
+            
+            const data = window.loadNumbersData.loadNumbers;
+            let html = '<h3>Load Numbers Data</h3>';
+            html += `<p><strong>Total Unique Loads:</strong> ${window.loadNumbersData.totalLoads || 0}</p>`;
+            html += `<p><strong>Total Records:</strong> ${window.loadNumbersData.totalRecords || 0}</p>`;
+            html += '<table class="data-table"><thead><tr><th>Load Number</th><th>Record Count</th></tr></thead><tbody>';
+            
+            data.forEach(load => {
+                html += `<tr><td>${load.loadNumber}</td><td>${load.count}</td></tr>`;
+            });
+            
+            html += '</tbody></table>';
             document.getElementById('sql-content').innerHTML = html + '<button class="button" onclick="refreshSQLData()">← Back to Summary</button>';
         }
 
@@ -915,7 +944,6 @@
         window.onload = function() {
             refreshStatus();
             refreshSQLData();
-            refreshLoadNumbers();
             refreshADBIPs();
             
             // Auto-refresh status every 30 seconds without flashing
@@ -1013,40 +1041,6 @@
             nameInput.style.display = 'none';
         }
 
-        // Load Numbers functions
-        async function refreshLoadNumbers() {
-            const loadNumbersDiv = document.getElementById('load-numbers-content');
-            loadNumbersDiv.innerHTML = '<div class="loading">Loading load numbers...</div>';
-            
-            try {
-                const data = await apiCall('/webhook/load-numbers');
-                if (data.error) {
-                    loadNumbersDiv.innerHTML = `<div class="error">Error loading load numbers: ${data.error}</div>`;
-                    return;
-                }
-                
-                let html = '<div class="status-card">';
-                html += `<h3>Load Numbers Summary</h3>`;
-                html += `<p><strong>Total Unique Loads:</strong> ${data.totalLoads || 0}</p>`;
-                html += `<p><strong>Total Records:</strong> ${data.totalRecords || 0}</p>`;
-                
-                if (data.loadNumbers && data.loadNumbers.length > 0) {
-                    html += '<table class="data-table"><thead><tr><th>Load Number</th><th>Record Count</th></tr></thead><tbody>';
-                    data.loadNumbers.forEach(load => {
-                        html += `<tr><td>${load.loadNumber}</td><td>${load.count}</td></tr>`;
-                    });
-                    html += '</tbody></table>';
-                } else {
-                    html += '<p>No load numbers found in the database.</p>';
-                }
-                
-                html += '</div>';
-                loadNumbersDiv.innerHTML = html;
-                
-            } catch (error) {
-                loadNumbersDiv.innerHTML = `<div class="error">Error loading load numbers: ${error.message}</div>`;
-            }
-        }
     </script>
 </body>
 </html> 
