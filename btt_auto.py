@@ -229,8 +229,10 @@ class WebhookHandler(BaseHTTPRequestHandler):
             action = data.get('action')
             
             if action == 'toggle_auto':
-                self.manager.toggle_auto_update_webhook()
-                response = {'status': 'success', 'message': 'Auto-update toggled'}
+                self.manager.log_webhook(f"DEBUG: Toggle auto-update requested. Current state: {self.manager.config.get('auto_enabled', False)}")
+                result = self.manager.toggle_auto_update_webhook()
+                self.manager.log_webhook(f"DEBUG: Toggle result: {result}")
+                response = {'status': 'success', 'message': 'Auto-update toggled', 'autoEnabled': result.get('autoEnabled', False)}
             elif action == 'set_interval':
                 minutes = data.get('minutes', 5)
                 self.manager.set_interval(minutes)
@@ -1020,19 +1022,30 @@ class BTTAutoManager:
     def toggle_auto_update_webhook(self):
         """Toggle auto-update for webhook calls"""
         current_state = self.config.get("auto_enabled", False)
+        self.log_webhook(f"DEBUG: toggle_auto_update_webhook called. Current state: {current_state}")
+        
         if current_state:
+            self.log_webhook("DEBUG: Stopping auto-update...")
             self.stop_auto_update()
         else:
+            self.log_webhook("DEBUG: Starting auto-update...")
             self.start_auto_update()
-        self.log_webhook(f"Auto-update toggled via webhook: {'enabled' if self.config.get('auto_enabled', False) else 'disabled'}")
-        return {'success': True, 'autoEnabled': self.config.get('auto_enabled', False)}
+        
+        new_state = self.config.get('auto_enabled', False)
+        self.log_webhook(f"DEBUG: Auto-update toggled via webhook: {'enabled' if new_state else 'disabled'}")
+        self.log_webhook(f"DEBUG: Config after toggle: {self.config.get('auto_enabled', False)}")
+        return {'success': True, 'autoEnabled': new_state}
     
     def auto_update_loop(self):
         """Main loop for auto-updating"""
+        self.log_webhook(f"DEBUG: auto_update_loop started. running={self.running}, auto_enabled={self.config.get('auto_enabled', False)}")
         while self.running:
             try:
                 # Check if auto is still enabled
-                if not self.config.get("auto_enabled", False):
+                auto_enabled = self.config.get("auto_enabled", False)
+                self.log_webhook(f"DEBUG: auto_update_loop check. running={self.running}, auto_enabled={auto_enabled}")
+                if not auto_enabled:
+                    self.log_webhook("DEBUG: Auto-update disabled, breaking loop")
                     break
                 
                 # Try to connect to ADB devices if needed
@@ -1058,22 +1071,31 @@ class BTTAutoManager:
     
     def start_auto_update(self):
         """Start the auto-update thread"""
+        self.log_webhook(f"DEBUG: start_auto_update called. running={self.running}")
         if not self.running:
             self.running = True
             self.config["auto_enabled"] = True
             self.save_config()
+            self.log_webhook(f"DEBUG: start_auto_update - config saved. auto_enabled={self.config.get('auto_enabled', False)}")
             self.auto_thread = threading.Thread(target=self.auto_update_loop, daemon=True)
             self.auto_thread.start()
             console.print("[green]Auto-update started[/green]")
+            self.log_webhook("DEBUG: Auto-update thread started")
+        else:
+            self.log_webhook("DEBUG: start_auto_update - already running, skipping")
     
     def stop_auto_update(self):
         """Stop the auto-update thread"""
+        self.log_webhook(f"DEBUG: stop_auto_update called. running={self.running}")
         self.running = False
         self.config["auto_enabled"] = False
         self.save_config()
+        self.log_webhook(f"DEBUG: stop_auto_update - config saved. auto_enabled={self.config.get('auto_enabled', False)}")
         if self.auto_thread and self.auto_thread.is_alive():
             self.auto_thread.join(timeout=5)
+            self.log_webhook("DEBUG: Auto-update thread joined")
         console.print("[yellow]Auto-update stopped[/yellow]")
+        self.log_webhook("DEBUG: Auto-update stopped")
     
     def set_interval(self, minutes):
         """Set the update interval"""

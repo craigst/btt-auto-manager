@@ -1,6 +1,9 @@
 # Use Ubuntu as base image for ADB support
 FROM ubuntu:22.04
 
+# Set the icon for the container
+LABEL org.opencontainers.image.icon="/app/network-server.png"
+
 # Set environment variables
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
