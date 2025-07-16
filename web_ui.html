@@ -373,7 +373,7 @@
 
             <!-- SQL Data Section -->
             <div class="section">
-                <h2>🗄️ SQL Database Data <button class="refresh-btn" onclick="refreshSQLData()">🔄 Refresh</button></h2>
+                <h2 id="sql-header">🗄️ SQL Database Data <button class="refresh-btn" onclick="refreshSQLData()">🔄 Refresh</button></h2>
                 <div id="sql-content" class="loading">Loading SQL data...</div>
             </div>
 
@@ -508,31 +508,6 @@
                             <div class="status-value">${Math.round(status.uptime || 0)} seconds</div>
                         </div>
                     </div>
-                    <div class="status-card">
-                        <h3>Database Statistics</h3>
-                        <table class="data-table">
-                            <tr>
-                                <th>Metric</th>
-                                <th>Value</th>
-                                <th>Last Updated</th>
-                            </tr>
-                            <tr>
-                                <td>Locations</td>
-                                <td>${status.lastLocations || 0}</td>
-                                <td>${status.lastProcessed || 'Never'}</td>
-                            </tr>
-                            <tr>
-                                <td>Cars</td>
-                                <td>${status.lastCars || 0}</td>
-                                <td>${status.lastProcessed || 'Never'}</td>
-                            </tr>
-                            <tr>
-                                <td>Loads</td>
-                                <td>${status.lastLoads || 0}</td>
-                                <td>${status.lastProcessed || 'Never'}</td>
-                            </tr>
-                        </table>
-                    </div>
                 `;
                 statusDiv.innerHTML = html;
                 
@@ -566,11 +541,19 @@
             sqlDiv.innerHTML = '<div class="loading">Loading SQL data...</div>';
             
             try {
-                const [dwjjob, dwvveh, loadNumbers] = await Promise.all([
+                const [dwjjob, dwvveh, loadNumbers, status] = await Promise.all([
                     apiCall('/webhook/dwjjob'),
                     apiCall('/webhook/dwvveh'),
-                    apiCall('/webhook/load-numbers')
+                    apiCall('/webhook/load-numbers'),
+                    apiCall('/status')
                 ]);
+                
+                // Update the header with last updated information
+                const sqlHeader = document.getElementById('sql-header');
+                if (sqlHeader && status && !status.error) {
+                    const lastUpdated = status.lastProcessed || 'Never';
+                    sqlHeader.innerHTML = `🗄️ SQL Database Data <span style="font-size: 0.8em; color: #9ca3af; margin-left: 10px;">Last updated: ${lastUpdated}</span> <button class="refresh-btn" onclick="refreshSQLData()">🔄 Refresh</button>`;
+                }
                 
                 let html = '<div class="status-grid">';
                 
