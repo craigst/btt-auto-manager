@@ -163,6 +163,14 @@ class WebhookHandler(BaseHTTPRequestHandler):
                     response = {'status': 'success', 'connected': connected, 'message': f'Connection test for {ip}'}
                 else:
                     response = {'status': 'error', 'message': 'IP address required'}
+            elif action == 'rename':
+                ip = data.get('ip')
+                name = data.get('name')
+                if ip and name:
+                    self.manager.rename_adb_device(ip, name)
+                    response = {'status': 'success', 'message': f'Renamed device {ip} to {name}'}
+                else:
+                    response = {'status': 'error', 'message': 'IP and name required for rename'}
             else:
                 response = {'status': 'error', 'message': 'Invalid action'}
             
@@ -184,8 +192,13 @@ class WebhookHandler(BaseHTTPRequestHandler):
             ip = data.get('ip')
             
             if ip:
-                connected = self.manager.test_adb_connection(ip)
-                response = {'status': 'success', 'connected': connected, 'message': f'Connection test for {ip}'}
+                connected, command_output = self.manager.test_adb_connection(ip)
+                response = {
+                    'status': 'success', 
+                    'connected': connected, 
+                    'message': f'Connection test for {ip}',
+                    'commandOutput': command_output
+                }
             else:
                 response = {'status': 'error', 'message': 'IP address required'}
             
@@ -244,9 +257,11 @@ class WebhookHandler(BaseHTTPRequestHandler):
             any_connected = False
             try:
                 adb_ips = self.manager.get_adb_ips()
-                for ip in adb_ips:
+                for device in adb_ips:
+                    ip = device.get('ip', device)
                     try:
-                        if self.manager.test_adb_connection(ip):
+                        connected, _ = self.manager.test_adb_connection(ip)
+                        if connected:
                             any_connected = True
                             break
                     except Exception as e:
@@ -292,11 +307,12 @@ class WebhookHandler(BaseHTTPRequestHandler):
     def serve_adb_ips(self):
         """Serve ADB IP list with connection status"""
         try:
-            ips = self.manager.get_adb_ips()
+            adb_ips = self.manager.get_adb_ips()
             result = []
-            for ip in ips:
-                connected = self.manager.test_adb_connection(ip)
-                result.append({'ip': ip, 'connected': connected})
+            for device in adb_ips:
+                ip = device.get('ip', device)
+                connected, _ = self.manager.test_adb_connection(ip)
+                result.append({'ip': ip, 'name': device.get('name', ip), 'connected': connected})
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
             self.send_header('Access-Control-Allow-Origin', '*')
@@ -413,30 +429,62 @@ class BTTAutoManager:
     
     def add_adb_ip(self, ip):
         """Add ADB IP address to the list"""
-        if ip not in self.config.get('adb_ips', []):
+        if ip not in [device.get('ip', device) for device in self.config.get('adb_ips', [])]:
             if 'adb_ips' not in self.config:
                 self.config['adb_ips'] = []
-            self.config['adb_ips'].append(ip)
+            # Store as object with ip and name
+            self.config['adb_ips'].append({'ip': ip, 'name': f'Device {len(self.config["adb_ips"]) + 1}'})
             self.save_config()
             self.log_webhook(f"Added ADB IP: {ip}")
             console.print(f"[green]Added ADB IP: {ip}[/green]")
     
     def remove_adb_ip(self, ip):
         """Remove ADB IP address from the list"""
-        if ip in self.config.get('adb_ips', []):
-            self.config['adb_ips'].remove(ip)
-            self.save_config()
-            self.log_webhook(f"Removed ADB IP: {ip}")
-            console.print(f"[yellow]Removed ADB IP: {ip}[/yellow]")
+        adb_ips = self.config.get('adb_ips', [])
+        for i, device in enumerate(adb_ips):
+            device_ip = device.get('ip', device) if isinstance(device, dict) else device
+            if device_ip == ip:
+                self.config['adb_ips'].pop(i)
+                self.save_config()
+                self.log_webhook(f"Removed ADB IP: {ip}")
+                console.print(f"[yellow]Removed ADB IP: {ip}[/yellow]")
+                break
+    
+    def rename_adb_device(self, ip, name):
+        """Rename an ADB device"""
+        adb_ips = self.config.get('adb_ips', [])
+        for device in adb_ips:
+            device_ip = device.get('ip', device) if isinstance(device, dict) else device
+            if device_ip == ip:
+                if isinstance(device, dict):
+                    device['name'] = name
+                else:
+                    # Convert string to dict
+                    idx = adb_ips.index(device)
+                    adb_ips[idx] = {'ip': device, 'name': name}
+                self.save_config()
+                self.log_webhook(f"Renamed ADB device {ip} to: {name}")
+                console.print(f"[green]Renamed ADB device {ip} to: {name}[/green]")
+                break
     
     def get_adb_ips(self):
-        """Get list of ADB IP addresses"""
-        return self.config.get('adb_ips', [])
+        """Get list of ADB IP addresses with names"""
+        adb_ips = self.config.get('adb_ips', [])
+        # Convert old format (strings) to new format (objects)
+        result = []
+        for device in adb_ips:
+            if isinstance(device, dict):
+                result.append(device)
+            else:
+                # Old format - convert to new format
+                result.append({'ip': device, 'name': f'Device {len(result) + 1}'})
+        return result
     
     def try_connect_adb_ips(self):
         """Try to connect to ADB devices using stored IPs"""
         ips = self.config.get('adb_ips', [])
-        for ip in ips:
+        for device in ips:
+            ip = device.get('ip', device)
             try:
                 # Try to connect to the IP
                 result = subprocess.run(f'adb connect {ip}', shell=True, capture_output=True, text=True, timeout=10)
@@ -451,27 +499,41 @@ class BTTAutoManager:
     
     def test_adb_connection(self, ip):
         """Test if an ADB device is connected at the specified IP"""
+        command_output = ""
         try:
             # First try to connect to the IP
             result = subprocess.run(f'adb connect {ip}', shell=True, capture_output=True, text=True, timeout=10)
+            command_output += f"$ adb connect {ip}\n"
+            command_output += f"Return code: {result.returncode}\n"
+            command_output += f"Output: {result.stdout}\n"
+            if result.stderr:
+                command_output += f"Error: {result.stderr}\n"
+            
             if result.returncode == 0 and 'connected' in result.stdout.lower():
                 # Now check if the device is actually connected
                 devices_result = subprocess.run('adb devices', shell=True, capture_output=True, text=True, timeout=5)
+                command_output += f"\n$ adb devices\n"
+                command_output += f"Return code: {devices_result.returncode}\n"
+                command_output += f"Output: {devices_result.stdout}\n"
+                if devices_result.stderr:
+                    command_output += f"Error: {devices_result.stderr}\n"
+                
                 if devices_result.returncode == 0:
                     lines = devices_result.stdout.splitlines()
                     for line in lines[1:]:  # Skip the first line (header)
                         if ip in line and 'device' in line and 'offline' not in line:
                             self.log_webhook(f"ADB connection test PASS for {ip}")
-                            return True
+                            return True, command_output
                 
                 self.log_webhook(f"ADB connection test FAIL for {ip} - device not found in device list")
-                return False
+                return False, command_output
             else:
                 self.log_webhook(f"ADB connection test FAIL for {ip} - connection failed")
-                return False
+                return False, command_output
         except Exception as e:
+            command_output += f"\nException: {e}\n"
             self.log_webhook(f"ADB connection test ERROR for {ip}: {e}")
-            return False
+            return False, command_output
     
     def log_webhook(self, message):
         """Log webhook activity"""
@@ -797,8 +859,10 @@ class BTTAutoManager:
         status_text.append("\nADB IP Addresses:\n", style="bold")
         ips = self.config.get('adb_ips', [])
         if ips:
-            for ip in ips:
-                status_text.append(f"  {ip}\n")
+            for device in ips:
+                ip = device.get('ip', device)
+                name = device.get('name', ip)
+                status_text.append(f"  {name} ({ip})\n")
         else:
             status_text.append("  None configured\n")
         
@@ -910,8 +974,10 @@ class BTTAutoManager:
             ips = self.config.get('adb_ips', [])
             if ips:
                 console.print("Current ADB IP addresses:")
-                for i, ip in enumerate(ips, 1):
-                    console.print(f"  {i}. {ip}")
+                for i, device in enumerate(ips, 1):
+                    ip = device.get('ip', device)
+                    name = device.get('name', ip)
+                    console.print(f"  {i}. {name} ({ip})")
             else:
                 console.print("[yellow]No ADB IP addresses configured[/yellow]")
             
@@ -933,7 +999,8 @@ class BTTAutoManager:
                     try:
                         idx = int(console.input("Enter number to remove: ").strip()) - 1
                         if 0 <= idx < len(ips):
-                            self.remove_adb_ip(ips[idx])
+                            ip_to_remove = ips[idx].get('ip', ips[idx])
+                            self.remove_adb_ip(ip_to_remove)
                         else:
                             console.print("[red]Invalid number[/red]")
                     except ValueError:

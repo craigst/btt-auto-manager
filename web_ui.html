@@ -89,6 +89,96 @@
         .data-table tr:hover {
             background-color: #e9ecef;
         }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+        }
+        .modal-content {
+            background-color: white;
+            margin: 5% auto;
+            padding: 20px;
+            border-radius: 10px;
+            width: 80%;
+            max-width: 600px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+        }
+        .modal-title {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #333;
+        }
+        .close {
+            color: #aaa;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .close:hover {
+            color: #000;
+        }
+        .command-output {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 15px;
+            font-family: 'Courier New', monospace;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+            margin: 10px 0;
+        }
+        .device-name {
+            font-weight: bold;
+            color: #333;
+        }
+        .device-name-input {
+            width: 100%;
+            padding: 5px;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+            font-size: 14px;
+        }
+        .edit-name-btn {
+            background: #17a2b8;
+            color: white;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 12px;
+            margin-left: 5px;
+        }
+        .edit-name-btn:hover {
+            background: #138496;
+        }
+        .save-name-btn {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 12px;
+            margin-left: 5px;
+        }
+        .save-name-btn:hover {
+            background: #218838;
+        }
         .button {
             background: #667eea;
             color: white;
@@ -296,6 +386,19 @@
                     </div>
                 </div>
                 <div id="control-result"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for ADB Command Output -->
+    <div id="adbModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title">ADB Connection Test Results</div>
+                <span class="close" onclick="closeModal()">&times;</span>
+            </div>
+            <div id="modalContent">
+                <div id="commandOutput" class="command-output"></div>
             </div>
         </div>
     </div>
@@ -545,12 +648,21 @@
                 if (!Array.isArray(ips) || ips.length === 0) {
                     html += '<p>No ADB IP addresses configured</p>';
                 } else {
-                    html += '<table class="data-table"><thead><tr><th>IP Address</th><th>Connection Status</th><th>Test Result</th><th>Actions</th></tr></thead><tbody>';
+                    html += '<table class="data-table"><thead><tr><th>Device Name</th><th>IP Address</th><th>Connection Status</th><th>Test Result</th><th>Actions</th></tr></thead><tbody>';
                     ips.forEach(entry => {
                         const ip = entry.ip || entry;
                         const connected = entry.connected === true;
+                        const name = entry.name || 'Unnamed Device';
+                        const nameId = `name-${ip.replace(/[.:]/g, '-')}`;
+                        const nameInputId = `name-input-${ip.replace(/[.:]/g, '-')}`;
                         html += `
                             <tr>
+                                <td>
+                                    <span class="device-name" id="${nameId}">${name}</span>
+                                    <input type="text" class="device-name-input" id="${nameInputId}" value="${name}" style="display: none;">
+                                    <button class="edit-name-btn" onclick="editDeviceName('${ip}', '${nameId}', '${nameInputId}')">Edit</button>
+                                    <button class="save-name-btn" onclick="saveDeviceName('${ip}', '${nameId}', '${nameInputId}')" style="display: none;">Save</button>
+                                </td>
                                 <td>${ip}</td>
                                 <td><span class="connection-status ${connected ? 'connection-connected' : 'connection-disconnected'}" id="status-${ip.replace(/[.:]/g, '-')}">${connected ? 'Connected' : 'Disconnected'}</span></td>
                                 <td><span id="test-${ip.replace(/[.:]/g, '-')}">${connected ? 'PASS' : 'FAIL'}</span></td>
@@ -629,7 +741,14 @@
                     ip: ip
                 });
                 
+                let output = `Testing ADB connection to ${ip}...\n\n`;
+                
                 if (result.error) {
+                    output += `❌ Connection failed: ${result.error}\n`;
+                    if (result.commandOutput) {
+                        output += `\nCommand Output:\n${result.commandOutput}`;
+                    }
+                    
                     if (statusElement) {
                         statusElement.textContent = 'Failed';
                         statusElement.className = 'connection-status connection-disconnected';
@@ -639,6 +758,11 @@
                         testElement.style.color = '#dc3545';
                     }
                 } else {
+                    output += `✅ Connection ${result.connected ? 'SUCCESSFUL' : 'FAILED'}\n`;
+                    if (result.commandOutput) {
+                        output += `\nCommand Output:\n${result.commandOutput}`;
+                    }
+                    
                     if (statusElement) {
                         statusElement.textContent = result.connected ? 'Connected' : 'Disconnected';
                         statusElement.className = result.connected ? 'connection-status connection-connected' : 'connection-status connection-disconnected';
@@ -648,7 +772,14 @@
                         testElement.style.color = result.connected ? '#28a745' : '#dc3545';
                     }
                 }
+                
+                // Show modal with command output
+                showModal(output);
+                
             } catch (error) {
+                const output = `❌ Error testing connection to ${ip}:\n${error.message}`;
+                showModal(output);
+                
                 if (statusElement) {
                     statusElement.textContent = 'Error';
                     statusElement.className = 'connection-status connection-disconnected';
@@ -657,6 +788,31 @@
                     testElement.textContent = 'ERROR';
                     testElement.style.color = '#dc3545';
                 }
+            }
+        }
+
+        // Modal Management Functions
+        function showModal(content) {
+            const modal = document.getElementById('adbModal');
+            const outputDiv = document.getElementById('commandOutput');
+            if (modal && outputDiv) {
+                outputDiv.textContent = content;
+                modal.style.display = 'block';
+            }
+        }
+
+        function closeModal() {
+            const modal = document.getElementById('adbModal');
+            if (modal) {
+                modal.style.display = 'none';
+            }
+        }
+
+        // Close modal when clicking outside of it
+        window.onclick = function(event) {
+            const modal = document.getElementById('adbModal');
+            if (event.target === modal) {
+                closeModal();
             }
         }
 
@@ -794,6 +950,46 @@
             if (loadsElement) {
                 loadsElement.textContent = status.lastLoads || 0;
             }
+        }
+
+        // Device Name Management Functions
+        function editDeviceName(ip, nameSpanId, nameInputId) {
+            const nameSpan = document.getElementById(nameSpanId);
+            const nameInput = document.getElementById(nameInputId);
+            if (nameSpan && nameInput) {
+                nameSpan.style.display = 'none';
+                nameInput.style.display = 'inline-block';
+                nameInput.focus();
+                nameInput.setSelectionRange(0, nameInput.value.length); // Select text
+            }
+        }
+
+        async function saveDeviceName(ip, nameSpanId, nameInputId) {
+            const nameSpan = document.getElementById(nameSpanId);
+            const nameInput = document.getElementById(nameInputId);
+            const newName = nameInput.value.trim();
+
+            if (!newName) {
+                showMessage('control-result', 'Device name cannot be empty', 'error');
+                return;
+            }
+
+            const result = await apiCall('/webhook/adb-ips', 'POST', {
+                action: 'rename',
+                ip: ip,
+                name: newName
+            });
+
+            if (result.error) {
+                showMessage('control-result', `Error renaming device: ${result.error}`, 'error');
+            } else {
+                showMessage('control-result', `Successfully renamed device to: ${newName}`, 'success');
+                refreshADBIPs();
+            }
+            // Revert to original name
+            nameSpan.textContent = newName;
+            nameSpan.style.display = 'inline-block';
+            nameInput.style.display = 'none';
         }
     </script>
 </body>
