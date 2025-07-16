@@ -24,7 +24,7 @@ console = Console()
 
 # Webhook server configuration
 WEBHOOK_PORT = 5680
-WEBHOOK_HOST = 'localhost'
+WEBHOOK_HOST = '0.0.0.0'  # Changed from 'localhost' to '0.0.0.0' for Docker access
 
 class WebhookHandler(BaseHTTPRequestHandler):
     """HTTP request handler for webhook endpoints"""
@@ -45,6 +45,10 @@ class WebhookHandler(BaseHTTPRequestHandler):
             parsed_path = urllib.parse.urlparse(self.path)
             path = parsed_path.path
             
+            # Log the incoming request
+            if self.manager:
+                self.manager.log_webhook(f"GET request: {path}")
+            
             if path == '/':
                 self.serve_web_ui()
             elif path == '/webhook/ui':
@@ -63,8 +67,10 @@ class WebhookHandler(BaseHTTPRequestHandler):
                 self.send_error(404, "Endpoint not found")
                 
         except Exception as e:
+            error_msg = f"Webhook GET error: {e}"
             if self.manager:
-                self.manager.log_webhook(f"Webhook error: {e}")
+                self.manager.log_webhook(error_msg)
+            console.print(f"[red]{error_msg}[/red]")
             self.send_error(500, f"Internal server error: {e}")
     
     def do_POST(self):
@@ -72,6 +78,10 @@ class WebhookHandler(BaseHTTPRequestHandler):
         try:
             parsed_path = urllib.parse.urlparse(self.path)
             path = parsed_path.path
+            
+            # Log the incoming request
+            if self.manager:
+                self.manager.log_webhook(f"POST request: {path}")
             
             # Get request body
             content_length = int(self.headers.get('Content-Length', 0))
@@ -85,8 +95,10 @@ class WebhookHandler(BaseHTTPRequestHandler):
                 self.send_error(404, "Endpoint not found")
                 
         except Exception as e:
+            error_msg = f"Webhook POST error: {e}"
             if self.manager:
-                self.manager.log_webhook(f"Webhook POST error: {e}")
+                self.manager.log_webhook(error_msg)
+            console.print(f"[red]{error_msg}[/red]")
             self.send_error(500, f"Internal server error: {e}")
     
     def handle_control(self, post_data):
@@ -481,17 +493,27 @@ class BTTAutoManager:
             def handler_factory(*args, **kwargs):
                 return WebhookHandler(*args, manager=self, **kwargs)
             
-            self.webhook_server = HTTPServer((WEBHOOK_HOST, self.config.get('webhook_port', WEBHOOK_PORT)), handler_factory)
+            host = WEBHOOK_HOST
+            port = self.config.get('webhook_port', WEBHOOK_PORT)
+            
+            console.print(f"[blue]Starting webhook server on {host}:{port}...[/blue]")
+            self.log_webhook(f"Attempting to start webhook server on {host}:{port}")
+            
+            self.webhook_server = HTTPServer((host, port), handler_factory)
             self.webhook_thread = threading.Thread(target=self.webhook_server.serve_forever, daemon=True)
             self.webhook_thread.start()
             
             self._start_time = time.time()
-            self.log_webhook(f"Webhook server started on http://{WEBHOOK_HOST}:{self.config.get('webhook_port', WEBHOOK_PORT)}")
-            console.print(f"[green]Webhook server started on http://{WEBHOOK_HOST}:{self.config.get('webhook_port', WEBHOOK_PORT)}[/green]")
+            success_msg = f"Webhook server started successfully on http://{host}:{port}"
+            self.log_webhook(success_msg)
+            console.print(f"[green]{success_msg}[/green]")
             
         except Exception as e:
-            console.print(f"[red]Failed to start webhook server: {e}[/red]")
-            self.log_webhook(f"Failed to start webhook server: {e}")
+            error_msg = f"Failed to start webhook server: {e}"
+            console.print(f"[red]{error_msg}[/red]")
+            self.log_webhook(error_msg)
+            import traceback
+            console.print(f"[red]Traceback: {traceback.format_exc()}[/red]")
     
     def stop_webhook_server(self):
         """Stop the webhook server"""
@@ -829,43 +851,59 @@ def main():
     console.print("[bold blue]BTT Auto Manager[/bold blue]")
     console.print("Automated SQL Database Extraction Tool with Webhooks\n")
     
-    # Initialize manager
-    manager = BTTAutoManager()
-    
-    # Update initial status
-    manager.update_last_stats()
-    
-    # Start webhook server if enabled
-    if manager.config.get("webhook_enabled", True):
-        manager.start_webhook_server()
-    
-    # Check if running in non-interactive mode (Docker container)
-    import sys
-    if not sys.stdin.isatty():
-        console.print("[yellow]Running in non-interactive mode (Docker container)[/yellow]")
-        console.print("[green]Webhook server started[/green]")
-        console.print(f"[green]Available at: http://localhost:{manager.config.get('webhook_port', WEBHOOK_PORT)}[/green]")
+    try:
+        # Initialize manager
+        console.print("[blue]Initializing manager...[/blue]")
+        manager = BTTAutoManager()
         
-        # Start auto-update if enabled
-        if manager.config.get("auto_enabled", False):
-            manager.start_auto_update()
-            console.print("[green]Auto-update started[/green]")
+        # Update initial status
+        console.print("[blue]Updating initial status...[/blue]")
+        manager.update_last_stats()
+        
+        # Start webhook server if enabled
+        console.print("[blue]Starting webhook server...[/blue]")
+        if manager.config.get("webhook_enabled", True):
+            manager.start_webhook_server()
+            console.print("[green]Webhook server started successfully[/green]")
         else:
-            console.print("[yellow]Auto-update disabled[/yellow]")
+            console.print("[yellow]Webhook server disabled[/yellow]")
         
-        # Always keep the process alive in Docker
-        try:
-            while True:
-                time.sleep(1)
-        except KeyboardInterrupt:
-            console.print("\n[yellow]Shutting down...[/yellow]")
-            if manager.running:
-                manager.stop_auto_update()
-            if manager.webhook_server:
-                manager.stop_webhook_server()
-    else:
-        # Interactive mode - show menu
-        manager.show_menu()
+        # Check if running in non-interactive mode (Docker container)
+        import sys
+        if not sys.stdin.isatty():
+            console.print("[yellow]Running in non-interactive mode (Docker container)[/yellow]")
+            console.print("[green]Webhook server started[/green]")
+            console.print(f"[green]Available at: http://localhost:{manager.config.get('webhook_port', WEBHOOK_PORT)}[/green]")
+            
+            # Start auto-update if enabled
+            if manager.config.get("auto_enabled", False):
+                console.print("[blue]Starting auto-update...[/blue]")
+                manager.start_auto_update()
+                console.print("[green]Auto-update started[/green]")
+            else:
+                console.print("[yellow]Auto-update disabled[/yellow]")
+            
+            # Always keep the process alive in Docker
+            console.print("[blue]Entering main loop...[/blue]")
+            try:
+                while True:
+                    time.sleep(1)
+            except KeyboardInterrupt:
+                console.print("\n[yellow]Shutting down...[/yellow]")
+                if manager.running:
+                    manager.stop_auto_update()
+                if manager.webhook_server:
+                    manager.stop_webhook_server()
+        else:
+            # Interactive mode - show menu
+            console.print("[blue]Starting interactive menu...[/blue]")
+            manager.show_menu()
+            
+    except Exception as e:
+        console.print(f"[red]Error in main function: {e}[/red]")
+        import traceback
+        console.print(f"[red]Traceback: {traceback.format_exc()}[/red]")
+        raise
 
 if __name__ == "__main__":
     main() 
