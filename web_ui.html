@@ -1109,28 +1109,27 @@
         async function toggleAutoUpdate() {
             const toggle = document.getElementById('auto-update-toggle');
             const settingsToggle = document.getElementById('settings-auto-update-toggle');
-            const statusText = document.getElementById('auto-update-status');
-            
+            const statusText = document.getElementById('settings-auto-update-status');
             // Show loading state
-            statusText.textContent = 'Updating...';
-            
+            if (statusText) statusText.textContent = 'Updating...';
+            console.debug('Toggling auto-update...');
             const result = await apiCall('/webhook/control', 'POST', {
                 action: 'toggle_auto'
             });
-            
+            console.debug('Toggle response:', result);
             if (result.error || result.success === false) {
                 showMessage('control-result', `Error: ${result.error || result.message}`, 'error');
                 // Revert toggles
                 toggle.checked = !toggle.checked;
                 if (settingsToggle) settingsToggle.checked = !settingsToggle.checked;
-                statusText.textContent = toggle.checked ? 'Enabled' : 'Disabled';
+                if (statusText) statusText.textContent = toggle.checked ? 'Enabled' : 'Disabled';
             } else {
                 showMessage('control-result', 'Auto-update toggled successfully', 'success');
                 // Update toggles based on server response
                 const newState = result.autoEnabled || false;
                 toggle.checked = newState;
                 if (settingsToggle) settingsToggle.checked = newState;
-                statusText.textContent = newState ? 'Enabled' : 'Disabled';
+                if (statusText) statusText.textContent = newState ? 'Enabled' : 'Disabled';
                 refreshStatus();
             }
         }
@@ -1219,7 +1218,6 @@
                 autoUpdateElement.textContent = status.autoEnabled ? '🟢 Enabled' : '🔴 Disabled';
                 autoUpdateElement.className = `status-value ${status.autoEnabled ? 'status-online' : 'status-offline'}`;
             }
-            
             const intervalElement = document.querySelector('.status-card .status-value');
             if (intervalElement && intervalElement.previousElementSibling && intervalElement.previousElementSibling.textContent.includes('Update Interval')) {
                 intervalElement.textContent = `${status.intervalMinutes || 5} minutes`;
@@ -1229,22 +1227,8 @@
             if (uptimeElement && uptimeElement.previousElementSibling && uptimeElement.previousElementSibling.textContent.includes('Server Uptime')) {
                 uptimeElement.textContent = status.uptimeFormatted || `${Math.round(status.uptime || 0)} seconds`;
             }
-            
-            // Update database statistics
-            const locationsElement = document.querySelector('td:contains("Locations") + td');
-            if (locationsElement) {
-                locationsElement.textContent = status.lastLocations || 0;
-            }
-            
-            const carsElement = document.querySelector('td:contains("Cars") + td');
-            if (carsElement) {
-                carsElement.textContent = status.lastCars || 0;
-            }
-            
-            const loadsElement = document.querySelector('td:contains("Loads") + td');
-            if (loadsElement) {
-                loadsElement.textContent = status.lastLoads || 0;
-            }
+            // Remove invalid selectors for Locations, Cars, Loads
+            // If you want to update these, do it in the SQL data section only.
         }
 
         // Device Name Management Functions
