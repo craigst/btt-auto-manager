@@ -1038,17 +1038,15 @@ class BTTAutoManager:
         return self.run_getsql()
     
     def toggle_auto_update_webhook(self):
-        """Toggle auto-update for webhook calls"""
         current_state = self.config.get("auto_enabled", False)
         self.log_webhook(f"DEBUG: toggle_auto_update_webhook called. Current state: {current_state}")
-        
         if current_state:
             self.log_webhook("DEBUG: Stopping auto-update...")
             self.stop_auto_update()
             new_state = self.config.get('auto_enabled', False)
             self.log_webhook(f"DEBUG: Auto-update toggled via webhook: {'enabled' if new_state else 'disabled'}")
             self.log_webhook(f"DEBUG: Config after toggle: {self.config.get('auto_enabled', False)}")
-            return {'success': True, 'autoEnabled': new_state}
+            return {'success': True, 'status': 'success', 'autoEnabled': new_state}
         else:
             # Only allow toggling ON if an ADB device is connected
             adb_ips = self.get_adb_ips()
@@ -1064,13 +1062,13 @@ class BTTAutoManager:
                     self.log_webhook(f"Error testing ADB connection for {ip}: {e}")
             if not any_connected:
                 self.log_webhook("DEBUG: Cannot enable auto-update, no ADB device connected.")
-                return {'success': False, 'error': 'No ADB device connected. Cannot enable auto-update.'}
+                return {'success': False, 'status': 'error', 'error': 'No ADB device connected. Cannot enable auto-update.'}
             self.log_webhook("DEBUG: Starting auto-update...")
             self.start_auto_update()
             new_state = self.config.get('auto_enabled', False)
             self.log_webhook(f"DEBUG: Auto-update toggled via webhook: {'enabled' if new_state else 'disabled'}")
             self.log_webhook(f"DEBUG: Config after toggle: {self.config.get('auto_enabled', False)}")
-            return {'success': True, 'autoEnabled': new_state}
+            return {'success': True, 'status': 'success', 'autoEnabled': new_state}
     
     def auto_update_loop(self):
         """Main loop for auto-updating"""

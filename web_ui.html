@@ -603,7 +603,7 @@
                         </div>
                         <div class="status-card">
                             <h3>Server Uptime</h3>
-                            <div class="status-value">${Math.round(status.uptime || 0)} seconds</div>
+                            <div class="status-value">${status.uptimeFormatted || (Math.round(status.uptime || 0) + ' seconds')}</div>
                         </div>
                     </div>
                 `;
@@ -1117,7 +1117,7 @@
                 action: 'toggle_auto'
             });
             console.debug('Toggle response:', result);
-            if (result.error || result.success === false) {
+            if (result.status === 'error' || result.error || result.success === false) {
                 showMessage('control-result', `Error: ${result.error || result.message}`, 'error');
                 // Revert toggles
                 toggle.checked = !toggle.checked;
