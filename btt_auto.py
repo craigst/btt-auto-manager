@@ -295,8 +295,11 @@ class WebhookHandler(BaseHTTPRequestHandler):
                 ip = data.get('ip')
                 name = data.get('name')
                 if ip and name:
-                    self.manager.rename_adb_device(ip, name)
-                    response = {'status': 'success', 'message': f'Renamed device {ip} to {name}'}
+                    try:
+                        self.manager.rename_adb_device(ip, name)
+                        response = {'status': 'success', 'message': f'Renamed device {ip} to {name}'}
+                    except Exception as e:
+                        response = {'status': 'error', 'message': f'Failed to rename device: {e}'}
                 else:
                     response = {'status': 'error', 'message': 'IP and name required for rename'}
             else:
@@ -851,25 +854,22 @@ class BTTAutoManager:
         """Get status data for webhook"""
         now = datetime.now()
         last_processed = self.extracted_data.get('lastProcessed')
-        
         time_since_last_update = None
         time_since_last_update_formatted = None
         next_update_time = self.next_update_time.isoformat() if self.next_update_time else None
-        
+        uptime_seconds = time.time() - getattr(self, '_start_time', time.time())
+        uptime_formatted = self.format_uptime(uptime_seconds)
         if last_processed:
             try:
                 last_time = datetime.fromisoformat(last_processed.replace('Z', '+00:00'))
                 time_diff = now - last_time.replace(tzinfo=None)
                 time_since_last_update = int(time_diff.total_seconds() * 1000)
                 time_since_last_update_formatted = self.format_time_difference(time_diff.total_seconds())
-                
-                # Calculate next update time based on interval
-                interval_minutes = self.config.get('interval_minutes', 5)
                 if not next_update_time and self.config.get('auto_enabled', False):
+                    interval_minutes = self.config.get('interval_minutes', 5)
                     next_update_time = (last_time.replace(tzinfo=None) + timedelta(minutes=interval_minutes)).isoformat()
             except:
                 pass
-        
         return {
             'status': self.extracted_data.get('processingStatus', 'idle'),
             'lastProcessed': last_processed,
@@ -879,7 +879,8 @@ class BTTAutoManager:
             'dwjjobCount': len(self.extracted_data.get('DWJJOB', [])),
             'dwvvehCount': len(self.extracted_data.get('DWVVEH', [])),
             'serverTime': now.isoformat(),
-            'uptime': time.time() - getattr(self, '_start_time', time.time()),
+            'uptime': uptime_seconds,
+            'uptimeFormatted': uptime_formatted,
             'webhookEnabled': self.config.get('webhook_enabled', True),
             'webhookPort': self.config.get('webhook_port', WEBHOOK_PORT),
             'autoEnabled': self.config.get('auto_enabled', False),
@@ -890,7 +891,22 @@ class BTTAutoManager:
             'adbIps': self.config.get('adb_ips', []),
             'preferredDevice': self.config.get('preferred_device', None)
         }
-    
+
+    def format_uptime(self, seconds):
+        seconds = int(seconds)
+        if seconds < 60:
+            return f"{seconds} second{'s' if seconds != 1 else ''}"
+        minutes = seconds // 60
+        if minutes < 60:
+            return f"{minutes} minute{'s' if minutes != 1 else ''}"
+        hours = minutes // 60
+        minutes = minutes % 60
+        if hours < 24:
+            return f"{hours} hour{'s' if hours != 1 else ''} {minutes} minute{'s' if minutes != 1 else ''}"
+        days = hours // 24
+        hours = hours % 24
+        return f"{days} day{'s' if days != 1 else ''} {hours} hour{'s' if hours != 1 else ''}"
+
     def format_time_difference(self, seconds):
         """Format time difference in human readable format"""
         if not seconds:
@@ -1029,14 +1045,32 @@ class BTTAutoManager:
         if current_state:
             self.log_webhook("DEBUG: Stopping auto-update...")
             self.stop_auto_update()
+            new_state = self.config.get('auto_enabled', False)
+            self.log_webhook(f"DEBUG: Auto-update toggled via webhook: {'enabled' if new_state else 'disabled'}")
+            self.log_webhook(f"DEBUG: Config after toggle: {self.config.get('auto_enabled', False)}")
+            return {'success': True, 'autoEnabled': new_state}
         else:
+            # Only allow toggling ON if an ADB device is connected
+            adb_ips = self.get_adb_ips()
+            any_connected = False
+            for device in adb_ips:
+                ip = device.get('ip', device)
+                try:
+                    connected, _ = self.test_adb_connection(ip)
+                    if connected:
+                        any_connected = True
+                        break
+                except Exception as e:
+                    self.log_webhook(f"Error testing ADB connection for {ip}: {e}")
+            if not any_connected:
+                self.log_webhook("DEBUG: Cannot enable auto-update, no ADB device connected.")
+                return {'success': False, 'error': 'No ADB device connected. Cannot enable auto-update.'}
             self.log_webhook("DEBUG: Starting auto-update...")
             self.start_auto_update()
-        
-        new_state = self.config.get('auto_enabled', False)
-        self.log_webhook(f"DEBUG: Auto-update toggled via webhook: {'enabled' if new_state else 'disabled'}")
-        self.log_webhook(f"DEBUG: Config after toggle: {self.config.get('auto_enabled', False)}")
-        return {'success': True, 'autoEnabled': new_state}
+            new_state = self.config.get('auto_enabled', False)
+            self.log_webhook(f"DEBUG: Auto-update toggled via webhook: {'enabled' if new_state else 'disabled'}")
+            self.log_webhook(f"DEBUG: Config after toggle: {self.config.get('auto_enabled', False)}")
+            return {'success': True, 'autoEnabled': new_state}
     
     def auto_update_loop(self):
         """Main loop for auto-updating"""

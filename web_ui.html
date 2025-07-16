@@ -874,13 +874,14 @@
                         const name = entry.name || 'Unnamed Device';
                         const nameId = `name-${ip.replace(/[.:]/g, '-')}`;
                         const nameInputId = `name-input-${ip.replace(/[.:]/g, '-')}`;
+                        const saveBtnId = `save-name-btn-${ip.replace(/[.:]/g, '-')}`;
                         html += `
                             <tr>
                                 <td>
                                     <span class="device-name" id="${nameId}">${name}</span>
                                     <input type="text" class="device-name-input" id="${nameInputId}" value="${name}" style="display: none;">
-                                    <button class="edit-name-btn" onclick="editDeviceName('${ip}', '${nameId}', '${nameInputId}')">Edit</button>
-                                    <button class="save-name-btn" onclick="saveDeviceName('${ip}', '${nameId}', '${nameInputId}')" style="display: none;">Save</button>
+                                    <button class="edit-name-btn" onclick="editDeviceName('${ip}', '${nameId}', '${nameInputId}', '${saveBtnId}')">Edit</button>
+                                    <button class="save-name-btn" id="${saveBtnId}" onclick="saveDeviceName('${ip}', '${nameId}', '${nameInputId}', '${saveBtnId}')" style="display: none;">Save</button>
                                 </td>
                                 <td>${ip}</td>
                                 <td><span class="connection-status ${connected ? 'connection-connected' : 'connection-disconnected'}" id="status-${ip.replace(/[.:]/g, '-')}">${connected ? 'Connected' : 'Disconnected'}</span></td>
@@ -1117,8 +1118,8 @@
                 action: 'toggle_auto'
             });
             
-            if (result.error) {
-                showMessage('control-result', `Error: ${result.error}`, 'error');
+            if (result.error || result.success === false) {
+                showMessage('control-result', `Error: ${result.error || result.message}`, 'error');
                 // Revert toggles
                 toggle.checked = !toggle.checked;
                 if (settingsToggle) settingsToggle.checked = !settingsToggle.checked;
@@ -1223,10 +1224,10 @@
             if (intervalElement && intervalElement.previousElementSibling && intervalElement.previousElementSibling.textContent.includes('Update Interval')) {
                 intervalElement.textContent = `${status.intervalMinutes || 5} minutes`;
             }
-            
+            // Use formatted uptime
             const uptimeElement = document.querySelector('.status-card .status-value');
             if (uptimeElement && uptimeElement.previousElementSibling && uptimeElement.previousElementSibling.textContent.includes('Server Uptime')) {
-                uptimeElement.textContent = `${Math.round(status.uptime || 0)} seconds`;
+                uptimeElement.textContent = status.uptimeFormatted || `${Math.round(status.uptime || 0)} seconds`;
             }
             
             // Update database statistics
@@ -1247,20 +1248,23 @@
         }
 
         // Device Name Management Functions
-        function editDeviceName(ip, nameSpanId, nameInputId) {
+        function editDeviceName(ip, nameSpanId, nameInputId, saveBtnId) {
             const nameSpan = document.getElementById(nameSpanId);
             const nameInput = document.getElementById(nameInputId);
-            if (nameSpan && nameInput) {
+            const saveBtn = document.getElementById(saveBtnId);
+            if (nameSpan && nameInput && saveBtn) {
                 nameSpan.style.display = 'none';
                 nameInput.style.display = 'inline-block';
+                saveBtn.style.display = 'inline-block';
                 nameInput.focus();
                 nameInput.setSelectionRange(0, nameInput.value.length); // Select text
             }
         }
 
-        async function saveDeviceName(ip, nameSpanId, nameInputId) {
+        async function saveDeviceName(ip, nameSpanId, nameInputId, saveBtnId) {
             const nameSpan = document.getElementById(nameSpanId);
             const nameInput = document.getElementById(nameInputId);
+            const saveBtn = document.getElementById(saveBtnId);
             const newName = nameInput.value.trim();
 
             if (!newName) {
@@ -1274,8 +1278,8 @@
                 name: newName
             });
 
-            if (result.error) {
-                showMessage('control-result', `Error renaming device: ${result.error}`, 'error');
+            if (result.error || result.status === 'error') {
+                showMessage('control-result', `Error renaming device: ${result.error || result.message}`, 'error');
             } else {
                 showMessage('control-result', `Successfully renamed device to: ${newName}`, 'success');
                 refreshADBIPs();
@@ -1284,6 +1288,7 @@
             nameSpan.textContent = newName;
             nameSpan.style.display = 'inline-block';
             nameInput.style.display = 'none';
+            if (saveBtn) saveBtn.style.display = 'none';
         }
 
         // Preferred Device Management Functions
