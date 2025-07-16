@@ -11,8 +11,6 @@ ENV WEBHOOK_PORT=5680
 RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
-    nodejs \
-    npm \
     android-tools-adb \
     curl \
     && rm -rf /var/lib/apt/lists/*
@@ -28,17 +26,7 @@ RUN pip3 install --no-cache-dir -r requirements.txt
 COPY btt_launcher.py .
 COPY getsql.py .
 COPY btt_auto.py .
-
-# Copy React web UI
-COPY web-ui/ ./web-ui/
-
-# Install and build React app
-WORKDIR /app/web-ui
-RUN npm install
-RUN npm run build
-
-# Move back to app directory
-WORKDIR /app
+COPY web_ui.html .
 
 # Copy Docker entry point
 COPY docker-entrypoint.sh /usr/local/bin/

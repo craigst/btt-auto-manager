@@ -283,15 +283,12 @@ class WebhookHandler(BaseHTTPRequestHandler):
             self.send_error(500, f"Failed to serve ADB IPs: {e}")
 
     def serve_web_ui(self):
-        """Serve the React web UI"""
+        """Serve the web UI HTML page"""
         try:
-            # Try to serve React build files first
-            react_build_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'web-ui', 'build')
-            index_html_path = os.path.join(react_build_path, 'index.html')
-            
-            if os.path.exists(index_html_path):
-                # Serve React build files
-                with open(index_html_path, 'r', encoding='utf-8') as f:
+            # Read the web UI HTML file
+            html_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'web_ui.html')
+            if os.path.exists(html_path):
+                with open(html_path, 'r', encoding='utf-8') as f:
                     html_content = f.read()
                 
                 self.send_response(200)
@@ -300,35 +297,23 @@ class WebhookHandler(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(html_content.encode('utf-8'))
             else:
-                # Fallback to static HTML if React build doesn't exist
-                html_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'web_ui.html')
-                if os.path.exists(html_path):
-                    with open(html_path, 'r', encoding='utf-8') as f:
-                        html_content = f.read()
-                    
-                    self.send_response(200)
-                    self.send_header('Content-type', 'text/html')
-                    self.send_header('Access-Control-Allow-Origin', '*')
-                    self.end_headers()
-                    self.wfile.write(html_content.encode('utf-8'))
-                else:
-                    # Final fallback HTML
-                    fallback_html = """
-                    <!DOCTYPE html>
-                    <html>
-                    <head><title>BTT Auto Manager</title></head>
-                    <body>
-                    <h1>BTT Auto Manager</h1>
-                    <p>Web UI not found. Please check the installation.</p>
-                    <p><a href="/status">Status</a> | <a href="/healthz">Health</a></p>
-                    </body>
-                    </html>
-                    """
-                    self.send_response(200)
-                    self.send_header('Content-type', 'text/html')
-                    self.send_header('Access-Control-Allow-Origin', '*')
-                    self.end_headers()
-                    self.wfile.write(fallback_html.encode('utf-8'))
+                # Fallback HTML if file doesn't exist
+                fallback_html = """
+                <!DOCTYPE html>
+                <html>
+                <head><title>BTT Auto Manager</title></head>
+                <body>
+                <h1>BTT Auto Manager</h1>
+                <p>Web UI file not found. Please check the installation.</p>
+                <p><a href="/status">Status</a> | <a href="/healthz">Health</a></p>
+                </body>
+                </html>
+                """
+                self.send_response(200)
+                self.send_header('Content-type', 'text/html')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                self.wfile.write(fallback_html.encode('utf-8'))
                 
         except Exception as e:
             self.send_error(500, f"Failed to serve web UI: {e}")

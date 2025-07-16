@@ -741,11 +741,60 @@
             refreshSQLData();
             refreshADBIPs();
             
-            // Auto-refresh every 30 seconds
+            // Auto-refresh status every 30 seconds without flashing
             setInterval(() => {
-                refreshStatus();
+                // Only refresh status data, not the entire page
+                fetchStatusSilently();
             }, 30000);
         };
+        
+        // Silent status refresh that doesn't cause visual flashing
+        async function fetchStatusSilently() {
+            try {
+                const status = await apiCall('/status');
+                if (!status.error) {
+                    // Update status elements without full page refresh
+                    updateStatusElements(status);
+                }
+            } catch (error) {
+                console.error('Silent status refresh failed:', error);
+            }
+        }
+        
+        function updateStatusElements(status) {
+            // Update status cards without full refresh
+            const autoUpdateElement = document.querySelector('.status-card .status-value.status-online, .status-card .status-value.status-offline');
+            if (autoUpdateElement) {
+                autoUpdateElement.textContent = status.autoEnabled ? '🟢 Enabled' : '🔴 Disabled';
+                autoUpdateElement.className = `status-value ${status.autoEnabled ? 'status-online' : 'status-offline'}`;
+            }
+            
+            const intervalElement = document.querySelector('.status-card .status-value');
+            if (intervalElement && intervalElement.previousElementSibling && intervalElement.previousElementSibling.textContent.includes('Update Interval')) {
+                intervalElement.textContent = `${status.intervalMinutes || 5} minutes`;
+            }
+            
+            const uptimeElement = document.querySelector('.status-card .status-value');
+            if (uptimeElement && uptimeElement.previousElementSibling && uptimeElement.previousElementSibling.textContent.includes('Server Uptime')) {
+                uptimeElement.textContent = `${Math.round(status.uptime || 0)} seconds`;
+            }
+            
+            // Update database statistics
+            const locationsElement = document.querySelector('td:contains("Locations") + td');
+            if (locationsElement) {
+                locationsElement.textContent = status.lastLocations || 0;
+            }
+            
+            const carsElement = document.querySelector('td:contains("Cars") + td');
+            if (carsElement) {
+                carsElement.textContent = status.lastCars || 0;
+            }
+            
+            const loadsElement = document.querySelector('td:contains("Loads") + td');
+            if (loadsElement) {
+                loadsElement.textContent = status.lastLoads || 0;
+            }
+        }
     </script>
 </body>
 </html> 
