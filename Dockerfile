@@ -13,6 +13,7 @@ RUN apt-get update && apt-get install -y \
     python3-pip \
     android-tools-adb \
     curl \
+    iputils-ping \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
