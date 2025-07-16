@@ -234,46 +234,64 @@ class WebhookHandler(BaseHTTPRequestHandler):
     def serve_status(self):
         """Serve status information as JSON"""
         try:
+            # Check ADB device connections
+            adb_ips = self.manager.get_adb_ips()
+            any_connected = False
+            for ip in adb_ips:
+                if self.manager.test_adb_connection(ip):
+                    any_connected = True
+                    break
+            # If no ADB device is connected, force auto_enabled to False
+            if not any_connected:
+                self.manager.auto_enabled = False
+                self.manager.config['auto_enabled'] = False
+                self.manager.save_config()
             status = {
                 'autoEnabled': self.manager.auto_enabled,
-                'intervalMinutes': self.manager.interval_minutes,
-                'uptime': time.time() - self.manager.start_time,
-                'lastLocations': self.manager.last_locations,
-                'lastCars': self.manager.last_cars,
-                'lastLoads': self.manager.last_loads,
-                'lastProcessed': self.manager.last_processed,
+                'intervalMinutes': getattr(self.manager, 'interval_minutes', 5),
+                'uptime': time.time() - getattr(self.manager, 'start_time', time.time()),
+                'lastLocations': getattr(self.manager, 'last_locations', 0),
+                'lastCars': getattr(self.manager, 'last_cars', 0),
+                'lastLoads': getattr(self.manager, 'last_loads', 0),
+                'lastProcessed': getattr(self.manager, 'last_processed', None),
                 'webhookServer': 'Running',
-                'timestamp': datetime.now().isoformat()
+                'timestamp': datetime.now().isoformat(),
+                'adbConnected': any_connected
             }
-            
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
             self.send_header('Access-Control-Allow-Origin', '*')
             self.end_headers()
             self.wfile.write(json.dumps(status, indent=2).encode())
-            
         except Exception as e:
             self.send_error(500, f"Status error: {e}")
     
     def serve_adb_ips(self):
-        """Serve ADB IP list"""
+        """Serve ADB IP list with connection status"""
         try:
             ips = self.manager.get_adb_ips()
+            result = []
+            for ip in ips:
+                connected = self.manager.test_adb_connection(ip)
+                result.append({'ip': ip, 'connected': connected})
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
             self.send_header('Access-Control-Allow-Origin', '*')
             self.end_headers()
-            self.wfile.write(json.dumps(ips, indent=2).encode())
+            self.wfile.write(json.dumps(result, indent=2).encode())
         except Exception as e:
             self.send_error(500, f"Failed to serve ADB IPs: {e}")
 
     def serve_web_ui(self):
-        """Serve the web UI HTML page"""
+        """Serve the React web UI"""
         try:
-            # Read the web UI HTML file
-            html_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'web_ui.html')
-            if os.path.exists(html_path):
-                with open(html_path, 'r', encoding='utf-8') as f:
+            # Try to serve React build files first
+            react_build_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'web-ui', 'build')
+            index_html_path = os.path.join(react_build_path, 'index.html')
+            
+            if os.path.exists(index_html_path):
+                # Serve React build files
+                with open(index_html_path, 'r', encoding='utf-8') as f:
                     html_content = f.read()
                 
                 self.send_response(200)
@@ -282,23 +300,35 @@ class WebhookHandler(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(html_content.encode('utf-8'))
             else:
-                # Fallback HTML if file doesn't exist
-                fallback_html = """
-                <!DOCTYPE html>
-                <html>
-                <head><title>BTT Auto Manager</title></head>
-                <body>
-                <h1>BTT Auto Manager</h1>
-                <p>Web UI file not found. Please check the installation.</p>
-                <p><a href="/status">Status</a> | <a href="/healthz">Health</a></p>
-                </body>
-                </html>
-                """
-                self.send_response(200)
-                self.send_header('Content-type', 'text/html')
-                self.send_header('Access-Control-Allow-Origin', '*')
-                self.end_headers()
-                self.wfile.write(fallback_html.encode('utf-8'))
+                # Fallback to static HTML if React build doesn't exist
+                html_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'web_ui.html')
+                if os.path.exists(html_path):
+                    with open(html_path, 'r', encoding='utf-8') as f:
+                        html_content = f.read()
+                    
+                    self.send_response(200)
+                    self.send_header('Content-type', 'text/html')
+                    self.send_header('Access-Control-Allow-Origin', '*')
+                    self.end_headers()
+                    self.wfile.write(html_content.encode('utf-8'))
+                else:
+                    # Final fallback HTML
+                    fallback_html = """
+                    <!DOCTYPE html>
+                    <html>
+                    <head><title>BTT Auto Manager</title></head>
+                    <body>
+                    <h1>BTT Auto Manager</h1>
+                    <p>Web UI not found. Please check the installation.</p>
+                    <p><a href="/status">Status</a> | <a href="/healthz">Health</a></p>
+                    </body>
+                    </html>
+                    """
+                    self.send_response(200)
+                    self.send_header('Content-type', 'text/html')
+                    self.send_header('Access-Control-Allow-Origin', '*')
+                    self.end_headers()
+                    self.wfile.write(fallback_html.encode('utf-8'))
                 
         except Exception as e:
             self.send_error(500, f"Failed to serve web UI: {e}")
@@ -313,6 +343,16 @@ class BTTAutoManager:
         self.webhook_server = None
         self.webhook_thread = None
         self.webhook_logs = []
+        self.start_time = time.time()
+        
+        # Initialize attributes from config
+        self.auto_enabled = self.config.get('auto_enabled', False)
+        self.interval_minutes = self.config.get('interval_minutes', 5)
+        self.last_locations = self.config.get('last_locations', 0)
+        self.last_cars = self.config.get('last_cars', 0)
+        self.last_loads = self.config.get('last_loads', 0)
+        self.last_processed = self.config.get('last_sql_atime', None)
+        
         self.extracted_data = {
             'DWJJOB': [],
             'DWVVEH': [],

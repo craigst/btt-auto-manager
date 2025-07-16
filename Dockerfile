@@ -11,47 +11,55 @@ ENV WEBHOOK_PORT=5680
 RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
-    python3-venv \
-    wget \
-    unzip \
-    curl \
-    adb \
+    nodejs \
+    npm \
     android-tools-adb \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Create app directory
+# Set working directory
 WORKDIR /app
 
 # Copy requirements and install Python dependencies
 COPY requirements.txt .
 RUN pip3 install --no-cache-dir -r requirements.txt
 
-# Copy application files
+# Copy Python application files
 COPY btt_launcher.py .
 COPY getsql.py .
 COPY btt_auto.py .
-COPY web_ui.html .
 
-# Copy and set up entrypoint script
+# Copy React web UI
+COPY web-ui/ ./web-ui/
+
+# Install and build React app
+WORKDIR /app/web-ui
+RUN npm install
+RUN npm run build
+
+# Move back to app directory
+WORKDIR /app
+
+# Copy Docker entry point
 COPY docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # Create necessary directories
 RUN mkdir -p /app/db /app/logs
 
-# Create a non-root user for security
+# Create non-root user
 RUN useradd -m -u 1000 bttuser && \
     chown -R bttuser:bttuser /app
 
 # Switch to non-root user
 USER bttuser
 
-# Expose webhook port
+# Expose port
 EXPOSE 5680
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:5680/healthz || exit 1
 
-# Use entrypoint script
+# Set entry point
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"] 

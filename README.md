@@ -1,290 +1,265 @@
 # BTT Auto Manager
 
-A comprehensive Python-based automation tool for extracting SQLite databases from Android devices running the BCA Track application. Provides both manual and automated extraction capabilities with a RESTful webhook API.
+A Python-based automated SQL database extraction tool for Android devices running the BCA Track app. Features a modern web UI, ADB device management, and webhook API for integration.
 
-## 🚀 Features
+## Features
 
-- **Automated SQL Extraction**: Scheduled extraction with configurable intervals
-- **ADB Device Management**: Support for both USB and network-connected devices
-- **Webhook API**: RESTful endpoints for data access and remote control
-- **Real-time Status Monitoring**: Live status updates and statistics
-- **Docker Support**: Easy deployment with Docker and Docker Compose
-- **Cross-platform**: Works on Linux, Windows, and macOS
+- **Automated SQL Extraction**: Automatically extracts SQLite databases from Android devices
+- **Web UI**: Modern React-based interface for monitoring and control
+- **ADB Device Management**: Manage multiple Android device connections
+- **Webhook API**: RESTful API for integration with other systems
+- **Auto-Update**: Configurable automatic extraction intervals
+- **Docker Support**: Easy deployment with Docker containers
 
-## 📋 Prerequisites
+## Quick Start
 
-- **Docker** and **Docker Compose** (for containerized deployment)
-- **ADB** (Android Debug Bridge) - included in Docker image
-- **Android Device** with USB debugging enabled
-- **BCA Track App** installed on the Android device
+### Docker Deployment (Recommended)
 
-## 🐳 Quick Start with Docker
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/craigst/btt-auto-manager.git
+   cd btt-auto-manager
+   ```
 
-### 1. Clone the Repository
-```bash
-git clone https://github.com/yourusername/btt-auto-manager.git
-cd btt-auto-manager
-```
+2. **Build and run with Docker:**
+   ```bash
+   docker build -t btt-auto-manager:latest .
+   docker run -d --name btt-auto-manager -p 5680:5680 \
+     -v $(pwd)/db:/app/db \
+     -v $(pwd)/logs:/app/logs \
+     --restart unless-stopped \
+     btt-auto-manager:latest
+   ```
 
-### 2. Create Configuration File
-```bash
-# Create default configuration
-cat > btt_config.json << EOF
-{
-  "auto_enabled": false,
-  "interval_minutes": 20,
-  "last_sql_atime": null,
-  "last_locations": 0,
-  "last_cars": 0,
-  "last_loads": 0,
-  "webhook_enabled": true,
-  "webhook_port": 5680,
-  "adb_ips": []
-}
-EOF
-```
+3. **Access the web UI:**
+   - Open your browser to `http://localhost:5680`
+   - The web UI provides full control over the system
 
-### 3. Create Required Directories
-```bash
-mkdir -p db logs
-```
+### Local Development
 
-### 4. Build and Run with Docker Compose
-```bash
-# Build and start the container
-docker-compose up -d
+1. **Install dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-# View logs
-docker-compose logs -f
+2. **Install ADB tools:**
+   ```bash
+   # Ubuntu/Debian
+   sudo apt-get install android-tools-adb
+   
+   # macOS
+   brew install android-platform-tools
+   ```
 
-# Stop the container
-docker-compose down
-```
+3. **Run the application:**
+   ```bash
+   python3 btt_auto.py
+   ```
 
-### 5. Access the Webhook API
-The webhook server will be available at `http://localhost:5680`
+## Web UI Features
 
-## 🔧 Manual Installation
+The web interface provides:
 
-### 1. Install Dependencies
-```bash
-# Install Python dependencies
-pip install -r requirements.txt
+- **System Status**: Real-time monitoring of auto-update status, server uptime, and database statistics
+- **SQL Data Viewer**: Browse extracted DWJJOB and DWVVEH data
+- **ADB Device Management**: Add/remove Android device IPs and test connections
+- **System Controls**: Toggle auto-update, set intervals, and trigger manual extractions
+- **Auto-refresh**: Updates every 30 seconds to show current status
 
-# Install ADB (Linux)
-sudo apt install android-tools-adb
+## Webhook API
 
-# Install ADB (macOS)
-brew install android-platform-tools
+The application provides a RESTful API for integration:
 
-# Install ADB (Windows)
-# Download from Android SDK Platform Tools
-```
+### Status Endpoints
 
-### 2. Enable USB Debugging
-1. Go to Settings > Developer options on your Android device
-2. Enable "USB debugging"
-3. Connect device via USB
-
-### 3. Run the Application
-```bash
-# Launch the program
-python3 btt_launcher.py
-
-# Or run directly
-python3 btt_auto.py
-```
-
-## 🌐 Webhook API
-
-### Base URL
-```
-http://localhost:5680
-```
-
-### Available Endpoints
-
-#### Data Endpoints
-- `GET /webhook/dwjjob` - Get location data (DWJJOB table)
-- `GET /webhook/dwvveh` - Get vehicle data (DWVVEH table)
+- `GET /status` - Get system status and statistics
+- `GET /healthz` - Health check endpoint
+- `GET /webhook/dwjjob` - Get DWJJOB data
+- `GET /webhook/dwvveh` - Get DWVVEH data
 - `GET /webhook/adb-ips` - Get configured ADB IP addresses
 
-#### Control Endpoints
-- `POST /webhook/control` - Control auto-update and extraction
+### Control Endpoints
+
+- `POST /webhook/control` - Control system operations
+  ```json
+  {
+    "action": "toggle_auto" | "set_interval" | "run_extraction" | "update_status",
+    "minutes": 5  // for set_interval action
+  }
+  ```
+
 - `POST /webhook/adb-ips` - Manage ADB IP addresses
+  ```json
+  {
+    "action": "add" | "remove",
+    "ip": "192.168.1.100:5555"
+  }
+  ```
 
-#### Status Endpoints
-- `GET /status` - Get comprehensive system status
-- `GET /healthz` - Health check
+- `POST /webhook/test-connection` - Test ADB connection
+  ```json
+  {
+    "ip": "192.168.1.100:5555"
+  }
+  ```
 
-### Example Usage
+### Example API Usage
+
 ```bash
-# Get location data
-curl http://localhost:5680/webhook/dwjjob
-
-# Get vehicle data
-curl http://localhost:5680/webhook/dwvveh
+# Get system status
+curl http://localhost:5680/status
 
 # Toggle auto-update
 curl -X POST http://localhost:5680/webhook/control \
   -H "Content-Type: application/json" \
   -d '{"action": "toggle_auto"}'
 
-# Set 10-minute interval
-curl -X POST http://localhost:5680/webhook/control \
-  -H "Content-Type: application/json" \
-  -d '{"action": "set_interval", "minutes": 10}'
-
-# Add ADB IP address
+# Add ADB device
 curl -X POST http://localhost:5680/webhook/adb-ips \
   -H "Content-Type: application/json" \
-  -d '{"action": "add", "ip": "192.168.1.100:5555"}'
+  -d '{"action": "add", "ip": "192.168.1.24:5555"}'
 
-# Get system status
-curl http://localhost:5680/status
+# Test connection
+curl -X POST http://localhost:5680/webhook/test-connection \
+  -H "Content-Type: application/json" \
+  -d '{"ip": "192.168.1.24:5555"}'
 ```
 
-## 📁 Project Structure
-
-```
-btt-auto-manager/
-├── btt_launcher.py        # Program entry point
-├── getsql.py              # Core SQL extraction engine
-├── btt_auto.py            # Main auto manager with webhooks
-├── btt_config.json        # Configuration file
-├── requirements.txt       # Python dependencies
-├── Dockerfile             # Docker configuration
-├── docker-compose.yml     # Docker Compose setup
-├── .dockerignore          # Docker ignore file
-├── .gitignore             # Git ignore file
-├── README.md              # This file
-├── AUTOREADME.md          # Detailed documentation
-├── BTT_AUTO_MANAGER_CODEX.md  # Technical codex
-├── db/                    # Database storage (created automatically)
-└── logs/                  # Log files (created automatically)
-```
-
-## 🔧 Configuration
+## Configuration
 
 The application uses `btt_config.json` for configuration:
 
 ```json
 {
-  "auto_enabled": false,           // Auto-update toggle
-  "interval_minutes": 20,          // Update interval in minutes
-  "last_sql_atime": null,          // Last SQL file access time
-  "last_locations": 0,             // Last known location count
-  "last_cars": 0,                  // Last known car count
-  "last_loads": 0,                 // Last known load count
-  "webhook_enabled": true,         // Webhook server toggle
-  "webhook_port": 5680,            // Webhook server port
-  "adb_ips": []                    // Stored ADB IP addresses
+  "auto_enabled": false,
+  "interval_minutes": 5,
+  "last_sql_atime": "2025-07-15 22:45:19",
+  "last_locations": 18,
+  "last_cars": 58,
+  "last_loads": 8,
+  "webhook_enabled": true,
+  "webhook_port": 5680,
+  "adb_ips": ["192.168.1.24:5555"]
 }
 ```
 
-## 🗄️ Database Schema
+### Configuration Options
 
-### DWJJOB Table (Locations/Jobs)
-Contains job/location information with GPS coordinates and delivery details.
+- `auto_enabled`: Enable/disable automatic extraction
+- `interval_minutes`: Minutes between automatic extractions (1-1440)
+- `webhook_enabled`: Enable/disable webhook server
+- `webhook_port`: Port for webhook server (default: 5680)
+- `adb_ips`: List of Android device IP addresses
 
-**Key Columns**:
-- `dwjkey`: Unique job identifier
-- `dwjDriver`: Driver ID/name
-- `dwjLoad`: Load number/reference
-- `dwjDate`, `dwjTime`: Date and time
-- `dwjName`: Customer/contact name
-- `dwjAdd1-4`: Address lines
-- `dwjLat`, `dwjLong`: GPS coordinates
-- `dwjStatus`: Job status
+## ADB Device Setup
 
-### DWVVEH Table (Vehicles)
-Contains vehicle information and fleet management data.
+1. **Enable Developer Options** on your Android device
+2. **Enable USB Debugging** and **Network Debugging**
+3. **Get device IP** from Settings > About Phone > Status > IP address
+4. **Add device** via web UI or API: `IP:5555` (e.g., `192.168.1.24:5555`)
 
-**Key Columns**:
-- `dwvKey`: Unique vehicle identifier
-- `dwvDriver`: Assigned driver ID
-- `dwvLoad`: Current load assignment
-- `dwvSerial`: Vehicle serial/VIN number
-- `dwvMake`, `dwvModel`: Vehicle details
-- `dwvStatus`: Vehicle status
-- `dwvLocation`: Current location
+## Auto-Update Behavior
 
-## 🐛 Troubleshooting
+- **Enabled**: Automatically extracts SQL data at the configured interval
+- **Disabled**: Manual extraction only
+- **No ADB Connection**: Auto-update is automatically disabled when no devices are connected
+- **Connection Test**: Tests all configured devices and shows connection status
+
+## File Structure
+
+```
+btt-auto-manager/
+├── btt_auto.py          # Main application
+├── getsql.py            # SQL extraction logic
+├── btt_launcher.py      # Launcher script
+├── web_ui.html          # Web interface
+├── btt_config.json      # Configuration file
+├── requirements.txt     # Python dependencies
+├── Dockerfile          # Docker configuration
+├── docker-entrypoint.sh # Docker entry point
+├── db/                 # Extracted database files
+└── logs/               # Application logs
+```
+
+## Docker Configuration
+
+The Docker setup includes:
+
+- **Base Image**: Ubuntu 22.04 with Python 3
+- **Dependencies**: ADB tools, Python packages
+- **Volumes**: Database and logs directories
+- **Port**: 5680 for web interface
+- **User**: Non-root user for security
+
+### Docker Compose (Optional)
+
+```yaml
+version: '3.8'
+services:
+  btt-auto-manager:
+    build: .
+    ports:
+      - "5680:5680"
+    volumes:
+      - ./db:/app/db
+      - ./logs:/app/logs
+    restart: unless-stopped
+```
+
+## Troubleshooting
 
 ### Common Issues
 
-#### ADB Device Not Found
-- Enable USB debugging on device
-- Try different USB cables
-- Add device IP address for network connection
-- Check device authorization
+1. **ADB Connection Failed**
+   - Ensure device has network debugging enabled
+   - Check device IP address is correct
+   - Verify device is on the same network
 
-#### Permission Denied
-- Device may need root access
-- Try different ADB connection methods
-- Check device file permissions
+2. **Web UI Not Loading**
+   - Check container is running: `docker ps`
+   - Verify port 5680 is accessible
+   - Check logs: `docker logs btt-auto-manager`
 
-#### Webhook Server Won't Start
-- Check if port 5680 is available
-- Ensure no firewall blocking
-- Verify Docker container is running
+3. **Auto-Update Not Working**
+   - Verify ADB device is connected
+   - Check auto-update is enabled in web UI
+   - Review logs for extraction errors
 
-#### Docker Issues
-- Ensure Docker and Docker Compose are installed
-- Check container logs: `docker-compose logs -f`
-- Verify USB device access permissions
+### Logs
 
-### Debug Commands
-```bash
-# Check container status
-docker-compose ps
+- **Container logs**: `docker logs btt-auto-manager`
+- **Application logs**: Check `logs/` directory
+- **Webhook logs**: Available in web UI
 
-# View container logs
-docker-compose logs -f btt-auto-manager
+## Development
 
-# Access container shell
-docker-compose exec btt-auto-manager bash
+### Building React Web UI
 
-# Check webhook health
-curl http://localhost:5680/healthz
-```
+The web UI is built with vanilla JavaScript/HTML for simplicity. For React development:
 
-## 🔒 Security Considerations
+1. Create a new React app
+2. Copy the web UI logic to React components
+3. Build and serve static files
 
-- **Local Access Only**: Webhook server runs on localhost by default
-- **No Authentication**: Designed for local network use
-- **USB Device Access**: Docker container requires privileged mode for ADB
-- **Network Security**: If exposing to network, implement proper security measures
-
-## 📈 Performance
-
-- **Extraction Time**: Typically 2-5 seconds per extraction
-- **Memory Usage**: ~50MB typical
-- **Webhook Response**: Sub-second response times
-- **Concurrent Requests**: Supports multiple simultaneous webhook requests
-
-## 🤝 Contributing
+### Contributing
 
 1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+2. Create a feature branch
+3. Make your changes
+4. Test thoroughly
+5. Submit a pull request
 
-## 📄 License
+## License
 
-This project is designed for internal use with the BCA Track application. Ensure compliance with your organization's policies and the Android app's terms of service.
+This project is licensed under the MIT License - see the LICENSE file for details.
 
-## 📞 Support
+## Support
 
-For issues or questions:
-1. Check the troubleshooting section
-2. Review container logs
-3. Verify ADB and device connectivity
-4. Ensure all prerequisites are met
+For issues and questions:
+- Check the troubleshooting section
+- Review the logs for error messages
+- Open an issue on GitHub
 
 ---
 
-**Version**: 2.0.0  
-**Last Updated**: 2025-07-15  
-**Compatibility**: Python 3.7+, Android 5.0+, Docker 20.0+ 
+**BTT Auto Manager** - Automated SQL extraction for Android devices with modern web interface and API integration. 

@@ -542,16 +542,18 @@
                 let html = '<div class="status-card">';
                 html += '<h3>Configured ADB IP Addresses</h3>';
                 
-                if (ips.length === 0) {
+                if (!Array.isArray(ips) || ips.length === 0) {
                     html += '<p>No ADB IP addresses configured</p>';
                 } else {
                     html += '<table class="data-table"><thead><tr><th>IP Address</th><th>Connection Status</th><th>Test Result</th><th>Actions</th></tr></thead><tbody>';
-                    ips.forEach(ip => {
+                    ips.forEach(entry => {
+                        const ip = entry.ip || entry;
+                        const connected = entry.connected === true;
                         html += `
                             <tr>
                                 <td>${ip}</td>
-                                <td><span class="connection-status connection-disconnected" id="status-${ip.replace(/[.:]/g, '-')}">Disconnected</span></td>
-                                <td><span id="test-${ip.replace(/[.:]/g, '-')}">-</span></td>
+                                <td><span class="connection-status ${connected ? 'connection-connected' : 'connection-disconnected'}" id="status-${ip.replace(/[.:]/g, '-')}">${connected ? 'Connected' : 'Disconnected'}</span></td>
+                                <td><span id="test-${ip.replace(/[.:]/g, '-')}">${connected ? 'PASS' : 'FAIL'}</span></td>
                                 <td>
                                     <button class="button danger" onclick="removeADBIP('${ip}')">Remove</button>
                                     <button class="button warning" onclick="testConnection('${ip}')">Test</button>
@@ -563,10 +565,6 @@
                 }
                 html += '</div>';
                 adbDiv.innerHTML = html;
-                
-                // Test all connections
-                ips.forEach(ip => testConnection(ip));
-                
             } catch (error) {
                 adbDiv.innerHTML = `<div class="error">Error loading ADB IPs: ${error.message}</div>`;
             }
