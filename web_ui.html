@@ -911,6 +911,8 @@
                     html += `<td>`;
                     if (row.dwjLat && row.dwjLong) {
                         html += `<a href="#" onclick="openMapPopup('${row.dwjLat}','${row.dwjLong}');return false;" title="Show Map" style="color:#4f46e5;font-size:1.2em;">🗺️</a>`;
+                    } else if (row.dwjPostco) {
+                        html += `<a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(row.dwjPostco)}" target="_blank" title="Show Map by Postcode" style="color:#4f46e5;font-size:1.2em;">🗺️</a>`;
                     }
                     html += `</td></tr>`;
                 });
@@ -931,6 +933,8 @@
                     html += `<td>`;
                     if (row.dwjLat && row.dwjLong) {
                         html += `<a href="#" onclick="openMapPopup('${row.dwjLat}','${row.dwjLong}');return false;" title="Show Map" style="color:#4f46e5;font-size:1.2em;">🗺️</a>`;
+                    } else if (row.dwjPostco) {
+                        html += `<a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(row.dwjPostco)}" target="_blank" title="Show Map by Postcode" style="color:#4f46e5;font-size:1.2em;">🗺️</a>`;
                     }
                     html += `</td></tr>`;
                 });
