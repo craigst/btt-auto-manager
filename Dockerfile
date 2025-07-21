@@ -28,7 +28,6 @@ RUN pip3 install --no-cache-dir -r requirements.txt
 
 # Copy Python application files and assets
 COPY btt_auto.py .
-COPY web_ui.html .
 COPY network-server.png .
 
 # Set proper permissions for the icon
@@ -55,5 +54,9 @@ EXPOSE 5680
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:5680/healthz || exit 1
 
-# Set entry point
-ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"] 
+# Remove old web_ui.html references
+# Copy React build
+COPY web-ui/build /app/build
+
+# Serve React build with Python http.server
+CMD ["python3", "-m", "http.server", "5680", "--directory", "/app/build"] 
