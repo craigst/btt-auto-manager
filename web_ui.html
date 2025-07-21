@@ -896,14 +896,22 @@
             let html = `<div style='display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;'><h3 style='margin:0;'>Load Details</h3><span style='font-size:1.1em;color:#6366f1;font-weight:bold;'>#${loadNumber}</span></div>`;
             // Collections (always on top)
             if (result.collections && result.collections.length > 0) {
-                html += '<div style="margin-bottom:8px;">';
+                html += '<table class="data-table" style="margin-bottom:8px;"><thead><tr><th></th><th>Name</th><th>Postcode</th><th>Map</th></tr></thead><tbody>';
                 result.collections.sort((a, b) => (a.letter || '').localeCompare(b.letter || ''));
                 for (const col of result.collections) {
-                    // Show badge and actual location name (dwjName or fallback to dwjPostco)
-                    const locName = col.dwjName || col.dwjPostco || '';
-                    html += `<span style='margin-right:10px;'>${letterBadge(col.letter)}${locName}</span>`;
+                    html += '<tr>';
+                    html += `<td>${letterBadge(col.letter)}</td>`;
+                    html += `<td>${col.dwjName || ''}</td>`;
+                    html += `<td>${col.dwjPostco || ''}</td>`;
+                    html += `<td>`;
+                    if (col.dwjLat && col.dwjLong) {
+                        html += `<a href="#" onclick="openMapPopup('${col.dwjLat}','${col.dwjLong}');return false;" title="Show Map" style="color:#4f46e5;font-size:1.2em;">🗺️</a>`;
+                    } else if (col.dwjPostco) {
+                        html += `<a href="#" onclick="openMapPopup(null,null,'${encodeURIComponent(col.dwjPostco)}');return false;" title="Show Map by Postcode" style="color:#4f46e5;font-size:1.2em;">🗺️</a>`;
+                    }
+                    html += `</td></tr>`;
                 }
-                html += '</div>';
+                html += '</tbody></table>';
             }
             // Arrow between collections and deliveries
             if ((result.collections && result.collections.length > 0) && (result.deliveries && result.deliveries.length > 0)) {
@@ -911,14 +919,22 @@
             }
             // Deliveries (always below)
             if (result.deliveries && result.deliveries.length > 0) {
-                html += '<div style="margin-bottom:12px;">';
+                html += '<table class="data-table" style="margin-bottom:12px;"><thead><tr><th></th><th>Name</th><th>Postcode</th><th>Map</th></tr></thead><tbody>';
                 result.deliveries.sort((a, b) => (a.letter || '').localeCompare(b.letter || ''));
                 for (const del of result.deliveries) {
-                    // Show badge and actual location name (dwjName or fallback to dwjPostco)
-                    const locName = del.dwjName || del.dwjPostco || '';
-                    html += `<span style='margin-right:10px;'>${letterBadge(del.letter)}${locName}</span>`;
+                    html += '<tr>';
+                    html += `<td>${letterBadge(del.letter)}</td>`;
+                    html += `<td>${del.dwjName || ''}</td>`;
+                    html += `<td>${del.dwjPostco || ''}</td>`;
+                    html += `<td>`;
+                    if (del.dwjLat && del.dwjLong) {
+                        html += `<a href="#" onclick="openMapPopup('${del.dwjLat}','${del.dwjLong}');return false;" title="Show Map" style="color:#4f46e5;font-size:1.2em;">🗺️</a>`;
+                    } else if (del.dwjPostco) {
+                        html += `<a href="#" onclick="openMapPopup(null,null,'${encodeURIComponent(del.dwjPostco)}');return false;" title="Show Map by Postcode" style="color:#4f46e5;font-size:1.2em;">🗺️</a>`;
+                    }
+                    html += `</td></tr>`;
                 }
-                html += '</div>';
+                html += '</tbody></table>';
             }
             // Vehicles table (no heading)
             const sortVehiclesByLetter = arr => arr.slice().sort((a, b) => {
