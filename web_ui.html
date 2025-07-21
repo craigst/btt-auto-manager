@@ -942,20 +942,32 @@
             } else {
                 html += '<p>No delivery locations found for this load.</p>';
             }
-            // Vehicles
+            // Vehicles grouped by collection/delivery letter
             html += `<h4>Vehicles (${result.vehicleCount || 0})</h4>`;
             if (result.vehicles && result.vehicles.length > 0) {
-                html += '<table class="data-table"><thead><tr><th>Vehicle Ref</th><th>Model</th>';
-                if (showColLetter) html += '<th>Collection</th>';
-                if (showDelLetter) html += '<th>Delivery</th>';
-                html += '</tr></thead><tbody>';
-                result.vehicles.forEach(row => {
-                    html += `<tr><td>${row.dwvVehRef}</td><td>${row.dwvModDes}</td>`;
-                    if (showColLetter) html += `<td>${letterBadge(row.colLetter)}</td>`;
-                    if (showDelLetter) html += `<td>${letterBadge(row.delLetter)}</td>`;
-                    html += '</tr>';
+                // Group vehicles by collection letter (colLetter), then by delivery letter (delLetter)
+                const groupBy = (arr, key) => arr.reduce((acc, item) => {
+                    const k = item[key] || '';
+                    if (!acc[k]) acc[k] = [];
+                    acc[k].push(item);
+                    return acc;
+                }, {});
+                let grouped = groupBy(result.vehicles, showColLetter ? 'colLetter' : (showDelLetter ? 'delLetter' : 'colLetter'));
+                const sortedLetters = Object.keys(grouped).sort();
+                sortedLetters.forEach(letter => {
+                    html += `<div style='margin:10px 0 0 0;'><b>${letter ? letterBadge(letter) : ''} ${letter ? 'Location ' + letter : 'No Letter'}</b></div>`;
+                    html += '<table class="data-table"><thead><tr><th>Vehicle Ref</th><th>Model</th>';
+                    if (showColLetter) html += '<th>Collection</th>';
+                    if (showDelLetter) html += '<th>Delivery</th>';
+                    html += '</tr></thead><tbody>';
+                    grouped[letter].forEach(row => {
+                        html += `<tr><td>${row.dwvVehRef}</td><td>${row.dwvModDes}</td>`;
+                        if (showColLetter) html += `<td>${letterBadge(row.colLetter)}</td>`;
+                        if (showDelLetter) html += `<td>${letterBadge(row.delLetter)}</td>`;
+                        html += '</tr>';
+                    });
+                    html += '</tbody></table>';
                 });
-                html += '</tbody></table>';
             } else {
                 html += '<p>No vehicles found for this load.</p>';
             }
