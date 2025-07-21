@@ -912,7 +912,7 @@
                     if (row.dwjLat && row.dwjLong) {
                         html += `<a href="#" onclick="openMapPopup('${row.dwjLat}','${row.dwjLong}');return false;" title="Show Map" style="color:#4f46e5;font-size:1.2em;">🗺️</a>`;
                     } else if (row.dwjPostco) {
-                        html += `<a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(row.dwjPostco)}" target="_blank" title="Show Map by Postcode" style="color:#4f46e5;font-size:1.2em;">🗺️</a>`;
+                        html += `<a href="#" onclick="openMapPopup(null,null,'${encodeURIComponent(row.dwjPostco)}');return false;" title="Show Map by Postcode" style="color:#4f46e5;font-size:1.2em;">🗺️</a>`;
                     }
                     html += `</td></tr>`;
                 });
@@ -934,7 +934,7 @@
                     if (row.dwjLat && row.dwjLong) {
                         html += `<a href="#" onclick="openMapPopup('${row.dwjLat}','${row.dwjLong}');return false;" title="Show Map" style="color:#4f46e5;font-size:1.2em;">🗺️</a>`;
                     } else if (row.dwjPostco) {
-                        html += `<a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(row.dwjPostco)}" target="_blank" title="Show Map by Postcode" style="color:#4f46e5;font-size:1.2em;">🗺️</a>`;
+                        html += `<a href="#" onclick="openMapPopup(null,null,'${encodeURIComponent(row.dwjPostco)}');return false;" title="Show Map by Postcode" style="color:#4f46e5;font-size:1.2em;">🗺️</a>`;
                     }
                     html += `</td></tr>`;
                 });
@@ -1502,20 +1502,24 @@
             `;
             document.body.appendChild(mapModal);
         }
-        function openMapPopup(lat, lng) {
+        function openMapPopup(lat, lng, postcode) {
             const modal = document.getElementById('mapPopupModal');
             const content = document.getElementById('mapPopupContent');
-            if (!lat || !lng) {
-                content.innerHTML = '<p>No GPS coordinates available for this location.</p>';
-                console.warn('Map popup: No GPS coordinates provided.');
-            } else {
-                // Embed interactive Google Map (default street view), large size
-                const embedUrl = `https://www.google.com/maps?q=${lat},${lng}&hl=en&z=16&output=embed`;
+            if ((lat && lng) || postcode) {
+                let embedUrl;
+                if (lat && lng) {
+                    embedUrl = `https://www.google.com/maps?q=${lat},${lng}&hl=en&z=16&output=embed`;
+                } else if (postcode) {
+                    embedUrl = `https://www.google.com/maps?q=${postcode}&hl=en&z=16&output=embed`;
+                }
                 content.innerHTML = `
                     <div style="text-align:center;">
                         <iframe src="${embedUrl}" width="800" height="500" style="border-radius:8px;border:0;box-shadow:0 2px 8px #0003;" allowfullscreen loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
                     </div>
                 `;
+            } else {
+                content.innerHTML = '<p>No GPS coordinates or postcode available for this location.</p>';
+                console.warn('Map popup: No GPS or postcode provided.');
             }
             modal.style.display = 'block';
         }
