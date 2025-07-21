@@ -937,6 +937,9 @@
                 html += '</tbody></table>';
             }
             // Vehicles table (no heading)
+            // Determine if we need to show colLetter/delLetter badges
+            const showColLetter = (result.collections || []).length > 1;
+            const showDelLetter = (result.deliveries || []).length > 1;
             const sortVehiclesByLetter = arr => arr.slice().sort((a, b) => {
                 const la = ((a.colLetter || a.delLetter || '').charCodeAt(0)) || 0;
                 const lb = ((b.colLetter || b.delLetter || '').charCodeAt(0)) || 0;
@@ -944,9 +947,15 @@
             });
             const sortedVehicles = sortVehiclesByLetter(result.vehicles || []);
             if (sortedVehicles.length > 0) {
-                html += '<table class="data-table"><thead><tr><th>Vehicle Ref</th><th>Model</th></tr></thead><tbody>';
+                html += '<table class="data-table"><thead><tr><th>Vehicle Ref</th><th>Model</th>';
+                if (showColLetter) html += '<th>Collection</th>';
+                if (showDelLetter) html += '<th>Delivery</th>';
+                html += '</tr></thead><tbody>';
                 sortedVehicles.forEach(row => {
-                    html += `<tr><td>${row.dwvVehRef}</td><td>${row.dwvModDes}</td></tr>`;
+                    html += `<tr><td>${row.dwvVehRef}</td><td>${row.dwvModDes}</td>`;
+                    if (showColLetter) html += `<td>${row.colLetter ? letterBadge(row.colLetter) : ''}</td>`;
+                    if (showDelLetter) html += `<td>${row.delLetter ? letterBadge(row.delLetter) : ''}</td>`;
+                    html += '</tr>';
                 });
                 html += '</tbody></table>';
             } else {
