@@ -893,10 +893,14 @@
             // Add date to each load entry
             const dataWithDate = data.map(load => ({
                 ...load,
-                date: loadDateMap[load.loadNumber] || ''
+                date: (loadDateMap[load.loadNumber] || '').toString()
             }));
             // Sort by date descending
-            dataWithDate.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+            dataWithDate.sort((a, b) => {
+                const dateA = (a.date || '').toString();
+                const dateB = (b.date || '').toString();
+                return dateB.localeCompare(dateA);
+            });
             let html = '<h3>Load Numbers Data</h3>';
             html += `<p><strong>Total Unique Loads:</strong> ${window.loadNumbersData.totalLoads || 0}</p>`;
             html += `<p><strong>Total Records:</strong> ${window.loadNumbersData.totalRecords || 0}</p>`;
