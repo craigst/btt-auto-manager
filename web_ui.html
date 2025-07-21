@@ -917,31 +917,28 @@
                 html += '</div>';
             }
             // Vehicles table (no heading)
-            // Sort vehicles by colLetter (if present), else by delLetter
             const sortVehiclesByLetter = arr => arr.slice().sort((a, b) => {
-                // Prefer colLetter, fallback to delLetter
                 const la = ((a.colLetter || a.delLetter || '').charCodeAt(0)) || 0;
                 const lb = ((b.colLetter || b.delLetter || '').charCodeAt(0)) || 0;
                 return la - lb;
             });
             const sortedVehicles = sortVehiclesByLetter(result.vehicles || []);
             if (sortedVehicles.length > 0) {
-                html += '<table class="data-table"><thead><tr><th>Vehicle Ref</th><th>Model</th>';
-                // The original code had showColLetter and showDelLetter, but they are no longer used for headings.
-                // The collections/deliveries are now shown as badges.
-                // The vehicles table itself doesn't have a heading, so we just close the thead.
-                html += '</tr></thead><tbody>';
+                html += '<table class="data-table"><thead><tr><th>Vehicle Ref</th><th>Model</th></tr></thead><tbody>';
                 sortedVehicles.forEach(row => {
-                    html += `<tr><td>${row.dwvVehRef}</td><td>${row.dwvModDes}</td>`;
-                    // The original code had showColLetter and showDelLetter, but they are no longer used for vehicles.
-                    // The vehicles are just sorted by letter.
-                    html += '</tr>';
+                    html += `<tr><td>${row.dwvVehRef}</td><td>${row.dwvModDes}</td></tr>`;
                 });
                 html += '</tbody></table>';
             } else {
                 html += '<p>No vehicles found for this load.</p>';
             }
-            showModal(html);
+            // Show in the correct modal as HTML
+            const modal = document.getElementById('loadDetailsModal');
+            const outputDiv = document.getElementById('loadDetailsContent');
+            if (modal && outputDiv) {
+                outputDiv.innerHTML = html;
+                modal.style.display = 'block';
+            }
         }
 
         // ADB IP Management functions
@@ -1133,21 +1130,17 @@
 
         // Modal Management Functions
         function showModal(content) {
-            // Use load details modal if content is for load details, else use adbModal
-            if (typeof content === 'string' && content.startsWith('<h3>Details for Load Number:')) {
-                const modal = document.getElementById('loadDetailsModal');
-                const outputDiv = document.getElementById('loadDetailsContent');
-                if (modal && outputDiv) {
+            // If content looks like HTML, use innerHTML, else use textContent
+            const isHTML = /<[a-z][\s\S]*>/i.test(content);
+            const modal = document.getElementById('adbModal');
+            const outputDiv = document.getElementById('commandOutput');
+            if (modal && outputDiv) {
+                if (isHTML) {
                     outputDiv.innerHTML = content;
-                    modal.style.display = 'block';
-                }
-            } else {
-                const modal = document.getElementById('adbModal');
-                const outputDiv = document.getElementById('commandOutput');
-                if (modal && outputDiv) {
+                } else {
                     outputDiv.textContent = content;
-                    modal.style.display = 'block';
                 }
+                modal.style.display = 'block';
             }
         }
 
