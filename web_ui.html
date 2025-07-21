@@ -867,12 +867,42 @@
                 return;
             }
             const data = window.loadNumbersData.loadNumbers;
+            // Find the most recent date for each load number from window.dwjjobData
+            const dwjjob = window.dwjjobData || [];
+            // Helper to format YYYMMDD to 'Sunday DD/MM/YYYY'
+            function formatDate(yyyymmdd) {
+                if (!yyyymmdd || yyyymmdd.length !== 8) return '';
+                const year = yyyymmdd.slice(0,4);
+                const month = yyyymmdd.slice(4,6);
+                const day = yyyymmdd.slice(6,8);
+                const dateObj = new Date(`${year}-${month}-${day}`);
+                if (isNaN(dateObj.getTime())) return '';
+                const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+                return `${days[dateObj.getDay()]} ${day}/${month}/${year}`;
+            }
+            // Build a map of loadNumber -> most recent date
+            const loadDateMap = {};
+            dwjjob.forEach(row => {
+                const load = row.dwjLoad;
+                const date = row.dwjDate;
+                if (!load || !date) return;
+                if (!loadDateMap[load] || date > loadDateMap[load]) {
+                    loadDateMap[load] = date;
+                }
+            });
+            // Add date to each load entry
+            const dataWithDate = data.map(load => ({
+                ...load,
+                date: loadDateMap[load.loadNumber] || ''
+            }));
+            // Sort by date descending
+            dataWithDate.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
             let html = '<h3>Load Numbers Data</h3>';
             html += `<p><strong>Total Unique Loads:</strong> ${window.loadNumbersData.totalLoads || 0}</p>`;
             html += `<p><strong>Total Records:</strong> ${window.loadNumbersData.totalRecords || 0}</p>`;
-            html += '<table class="data-table"><thead><tr><th>Load Number</th><th>Record Count</th></tr></thead><tbody>';
-            data.forEach(load => {
-                html += `<tr><td><a href="#" onclick="showLoadDetails('${load.loadNumber}');return false;">${load.loadNumber}</a></td><td>${load.count}</td></tr>`;
+            html += '<table class="data-table"><thead><tr><th>Load Number</th><th>Date</th><th>Record Count</th></tr></thead><tbody>';
+            dataWithDate.forEach(load => {
+                html += `<tr><td><a href="#" onclick="showLoadDetails('${load.loadNumber}');return false;">${load.loadNumber}</a></td><td>${formatDate(load.date)}</td><td>${load.count}</td></tr>`;
             });
             html += '</tbody></table>';
             document.getElementById('sql-content').innerHTML = html + '<button class="button" onclick="refreshSQLData()">← Back to Summary</button>';
