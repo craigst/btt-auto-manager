@@ -890,68 +890,33 @@
                 const colors = ['#4f46e5','#16a34a','#f59e42','#e11d48','#0ea5e9','#fbbf24','#a21caf','#059669','#b91c1c','#7c3aed'];
                 const idx = letter.charCodeAt(0) - 65;
                 const color = colors[idx % colors.length];
-                return `<span style="display:inline-block;background:${color};color:white;font-weight:bold;border-radius:50%;width:1.5em;height:1.5em;line-height:1.5em;text-align:center;margin-right:6px;">${letter}</span>`;
+                return `<span style="display:inline-block;background:${color};color:#fff;border-radius:50%;width:22px;height:22px;line-height:22px;text-align:center;font-weight:bold;font-size:14px;margin-right:4px;">${letter}</span>`;
             }
-            // Determine if we have multiple collections/deliveries
-            const uniqueColLetters = (result.collections || []).map(c => c.letter).filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i);
-            const uniqueDelLetters = (result.deliveries || []).map(d => d.letter).filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i);
-            const showColLetter = uniqueColLetters.length > 1;
-            const showDelLetter = uniqueDelLetters.length > 1;
-            let html = `<h3>Details for Load Number: ${loadNumber}</h3>`;
-            // Sort collections, deliveries, and vehicles by letter (A, B, ...)
-            const sortByLetter = arr => arr.slice().sort((a, b) => {
-                const la = (a.letter || '').charCodeAt(0) || 0;
-                const lb = (b.letter || '').charCodeAt(0) || 0;
-                return la - lb;
-            });
-            // Collections
-            html += `<h4>Collections (${result.collectionCount || 0})</h4>`;
-            const sortedCollections = sortByLetter(result.collections || []);
-            if (sortedCollections.length > 0) {
-                html += '<table class="data-table"><thead><tr>';
-                if (showColLetter) html += '<th></th>';
-                html += '<th>Name</th><th>Postcode</th><th>Map</th></tr></thead><tbody>';
-                sortedCollections.forEach(row => {
-                    html += '<tr>';
-                    if (showColLetter) html += `<td>${letterBadge(row.letter)}</td>`;
-                    html += `<td>${row.dwjName}</td><td>${row.dwjPostco}</td>`;
-                    html += `<td>`;
-                    if (row.dwjLat && row.dwjLong) {
-                        html += `<a href="#" onclick="openMapPopup('${row.dwjLat}','${row.dwjLong}');return false;" title="Show Map" style="color:#4f46e5;font-size:1.2em;">🗺️</a>`;
-                    } else if (row.dwjPostco) {
-                        html += `<a href="#" onclick="openMapPopup(null,null,'${encodeURIComponent(row.dwjPostco)}');return false;" title="Show Map by Postcode" style="color:#4f46e5;font-size:1.2em;">🗺️</a>`;
-                    }
-                    html += `</td></tr>`;
-                });
-                html += '</tbody></table>';
-            } else {
-                html += '<p>No collection locations found for this load.</p>';
+            // Title with load number to the right
+            let html = `<div style='display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;'><h3 style='margin:0;'>Load Details</h3><span style='font-size:1.1em;color:#6366f1;font-weight:bold;'>#${loadNumber}</span></div>`;
+            // Collections (always on top)
+            if (result.collections && result.collections.length > 0) {
+                html += '<div style="margin-bottom:8px;">';
+                result.collections.sort((a, b) => (a.letter || '').localeCompare(b.letter || ''));
+                for (const col of result.collections) {
+                    html += `<span style='margin-right:10px;'>${letterBadge(col.letter)}${col.name || ''}</span>`;
+                }
+                html += '</div>';
             }
-            // Deliveries
-            html += `<h4>Deliveries (${result.deliveryCount || 0})</h4>`;
-            const sortedDeliveries = sortByLetter(result.deliveries || []);
-            if (sortedDeliveries.length > 0) {
-                html += '<table class="data-table"><thead><tr>';
-                if (showDelLetter) html += '<th></th>';
-                html += '<th>Name</th><th>Postcode</th><th>Map</th></tr></thead><tbody>';
-                sortedDeliveries.forEach(row => {
-                    html += '<tr>';
-                    if (showDelLetter) html += `<td>${letterBadge(row.letter)}</td>`;
-                    html += `<td>${row.dwjName}</td><td>${row.dwjPostco}</td>`;
-                    html += `<td>`;
-                    if (row.dwjLat && row.dwjLong) {
-                        html += `<a href="#" onclick="openMapPopup('${row.dwjLat}','${row.dwjLong}');return false;" title="Show Map" style="color:#4f46e5;font-size:1.2em;">🗺️</a>`;
-                    } else if (row.dwjPostco) {
-                        html += `<a href="#" onclick="openMapPopup(null,null,'${encodeURIComponent(row.dwjPostco)}');return false;" title="Show Map by Postcode" style="color:#4f46e5;font-size:1.2em;">🗺️</a>`;
-                    }
-                    html += `</td></tr>`;
-                });
-                html += '</tbody></table>';
-            } else {
-                html += '<p>No delivery locations found for this load.</p>';
+            // Arrow between collections and deliveries
+            if ((result.collections && result.collections.length > 0) && (result.deliveries && result.deliveries.length > 0)) {
+                html += `<div style='text-align:center;margin:0 0 8px 0;'><span style='display:inline-block;background:#6366f1;color:#fff;border-radius:50%;width:28px;height:28px;line-height:28px;font-size:18px;font-weight:bold;box-shadow:0 1px 4px #0001;'>↓</span></div>`;
             }
-            // Vehicles (just sort, do not group)
-            html += `<h4>Vehicles (${result.vehicleCount || 0})</h4>`;
+            // Deliveries (always below)
+            if (result.deliveries && result.deliveries.length > 0) {
+                html += '<div style="margin-bottom:12px;">';
+                result.deliveries.sort((a, b) => (a.letter || '').localeCompare(b.letter || ''));
+                for (const del of result.deliveries) {
+                    html += `<span style='margin-right:10px;'>${letterBadge(del.letter)}${del.name || ''}</span>`;
+                }
+                html += '</div>';
+            }
+            // Vehicles table (no heading)
             // Sort vehicles by colLetter (if present), else by delLetter
             const sortVehiclesByLetter = arr => arr.slice().sort((a, b) => {
                 // Prefer colLetter, fallback to delLetter
@@ -962,13 +927,14 @@
             const sortedVehicles = sortVehiclesByLetter(result.vehicles || []);
             if (sortedVehicles.length > 0) {
                 html += '<table class="data-table"><thead><tr><th>Vehicle Ref</th><th>Model</th>';
-                if (showColLetter) html += '<th>Collection</th>';
-                if (showDelLetter) html += '<th>Delivery</th>';
+                // The original code had showColLetter and showDelLetter, but they are no longer used for headings.
+                // The collections/deliveries are now shown as badges.
+                // The vehicles table itself doesn't have a heading, so we just close the thead.
                 html += '</tr></thead><tbody>';
                 sortedVehicles.forEach(row => {
                     html += `<tr><td>${row.dwvVehRef}</td><td>${row.dwvModDes}</td>`;
-                    if (showColLetter) html += `<td>${letterBadge(row.colLetter)}</td>`;
-                    if (showDelLetter) html += `<td>${letterBadge(row.delLetter)}</td>`;
+                    // The original code had showColLetter and showDelLetter, but they are no longer used for vehicles.
+                    // The vehicles are just sorted by letter.
                     html += '</tr>';
                 });
                 html += '</tbody></table>';
