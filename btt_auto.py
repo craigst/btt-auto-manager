@@ -16,6 +16,7 @@ from rich.layout import Layout
 from rich import box
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import urllib.parse
+import traceback
 # Consolidated functions from getsql.py
 
 # Configuration file
@@ -27,115 +28,65 @@ DB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'db')
 LOCAL_DB_PATH = os.path.join(DB_DIR, 'sql.db')
 DEVICE_DB_PATH = '/data/data/com.bca.bcatrack/cache/cache/data/sql.db'
 
-def run_adb(cmd, timeout=15, capture_output=True):
-    """Run ADB command with error handling"""
-    try:
-        result = subprocess.run(cmd, shell=True, capture_output=capture_output, text=True, timeout=timeout)
-        if result.returncode != 0:
-            return None
-        return result.stdout.strip() if capture_output else True
-    except subprocess.TimeoutExpired:
-        return None
-    except Exception as e:
-        return None
+# --- Robust Logger ---
+class Logger:
+    def __init__(self, log_path):
+        self.log_path = log_path
+        os.makedirs(os.path.dirname(log_path), exist_ok=True)
+    def log(self, msg, level='INFO'):
+        line = f"[{datetime.now().isoformat()}] [{level}] {msg}"
+        try:
+            with open(self.log_path, 'a') as f:
+                f.write(line + '\n')
+        except Exception:
+            pass
+        print(line)
+    def tail(self, n=200):
+        try:
+            with open(self.log_path, 'r') as f:
+                return ''.join(f.readlines()[-n:])
+        except Exception:
+            return '(No log file)'
 
-def get_connected_device():
-    """Get the first connected ADB device"""
-    out = run_adb('adb devices')
-    if not isinstance(out, str):
-        return None
-    lines = out.splitlines()
-    for line in lines[1:]:
-        if line.strip() and ('device' in line and not 'offline' in line):
-            return line.split()[0]
-    return None
+LOG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'logs', 'debug.log')
+logger = Logger(LOG_PATH)
 
-def run_adb_with_root(cmd, device, timeout=10):
-    """Run ADB command with root access fallback"""
-    # Try non-root first
-    try:
-        out = run_adb(cmd, timeout=timeout)
-        if out is not None and 'Permission denied' not in str(out):
-            return out, 'non-root', None
-    except Exception as e:
-        return None, 'non-root', f"Non-root error: {e}"
-    
-    # Try su 0 (works on some devices)
-    shell_part = cmd.split('shell',1)[1].strip() if 'shell' in cmd else cmd
-    su0_cmd = f'adb -s {device} shell su 0 {shell_part}'
-    try:
-        su0_out = run_adb(su0_cmd, timeout=timeout)
-        if su0_out is not None and 'Permission denied' not in str(su0_out):
-            return su0_out, 'su0', None
-    except Exception as e:
-        return None, 'su0', f"Su0 error: {e}"
-    
-    # Try su -c (works on other devices)
-    rootc_cmd = f'adb -s {device} shell su -c "{shell_part}"'
-    try:
-        rootc_out = run_adb(rootc_cmd, timeout=timeout)
-        if rootc_out is not None and 'Permission denied' not in str(rootc_out):
-            return rootc_out, 'suc', None
-    except Exception as e:
-        return None, 'suc', f"RootC error: {e}"
-    
-    return None, 'all-failed', 'All root forms failed'
+# Global exception hook
+sys.excepthook = lambda exc_type, exc_value, exc_traceback: logger.log(
+    f"Uncaught exception: {exc_type.__name__}: {exc_value}\n{''.join(traceback.format_tb(exc_traceback))}", 'ERROR')
 
-def copy_to_sdcard(device, use_root=False):
-    """Copy database from device to sdcard"""
-    dst = '/sdcard/sql.db'
-    if use_root == 'su0':
-        copy_cmd = f'adb -s {device} shell su 0 cp {DEVICE_DB_PATH} {dst}'
-    elif use_root == 'suc':
-        copy_cmd = f'adb -s {device} shell su -c "cp {DEVICE_DB_PATH} {dst}"'
+# --- Startup Checks ---
+def startup_checks():
+    logger.log('Startup checks...')
+    # Python version
+    logger.log(f'Python version: {sys.version}')
+    # Permissions
+    for path in ['.', 'db', 'logs', LOG_PATH]:
+        try:
+            testfile = os.path.join(path, 'test.tmp') if os.path.isdir(path) else path
+            with open(testfile, 'a') as f:
+                f.write('test')
+            if os.path.isdir(path):
+                os.remove(testfile)
+            logger.log(f'Write check passed: {path}')
+        except Exception as e:
+            logger.log(f'Write check FAILED: {path} ({e})', 'ERROR')
+    # DB check
+    db_path = os.path.join('db', 'sql.db')
+    if os.path.exists(db_path):
+        try:
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            cursor.execute('SELECT name FROM sqlite_master WHERE type="table";')
+            tables = [row[0] for row in cursor.fetchall()]
+            logger.log(f'DB tables: {tables}')
+            conn.close()
+        except Exception as e:
+            logger.log(f'DB check FAILED: {e}', 'ERROR')
     else:
-        copy_cmd = f'adb -s {device} shell cp "{DEVICE_DB_PATH}" "{dst}"'
-    out = run_adb(copy_cmd, timeout=15)
-    return out is not None
+        logger.log('DB file missing: db/sql.db', 'ERROR')
 
-def pull_from_sdcard(device):
-    """Pull database from sdcard to local"""
-    if not os.path.exists(DB_DIR):
-        os.makedirs(DB_DIR)
-    pull_cmd = f'adb -s {device} pull /sdcard/sql.db "{LOCAL_DB_PATH}"'
-    out = run_adb(pull_cmd, timeout=30)
-    return os.path.exists(LOCAL_DB_PATH)
-
-def extract_sqlite_data_from_device():
-    """Main extraction function from getsql.py"""
-    try:
-        # Check ADB
-        if not run_adb('adb version'):
-            return "ADB not available"
-        
-        # Get connected device
-        device = get_connected_device()
-        if not device:
-            return "No ADB device connected"
-        
-        # Check if database exists on device
-        cmd = f'adb -s {device} shell ls -l "{DEVICE_DB_PATH}"'
-        out, used_root, err = run_adb_with_root(cmd, device, timeout=10)
-        
-        if not out or 'No such file' in str(out) or 'Permission denied' in str(out):
-            return f"Database not found on device: {err or 'File not accessible'}"
-        
-        # Copy to sdcard
-        if not copy_to_sdcard(device, used_root):
-            return "Failed to copy database to sdcard"
-        
-        # Pull from sdcard
-        if not pull_from_sdcard(device):
-            return "Failed to pull database from sdcard"
-        
-        # Clean up sdcard
-        cleanup_cmd = f'adb -s {device} shell rm /sdcard/sql.db'
-        run_adb(cleanup_cmd, timeout=10)
-        
-        return "SUCCESS"
-        
-    except Exception as e:
-        return f"Extraction error: {str(e)}"
+startup_checks()
 
 # Webhook server configuration
 WEBHOOK_PORT = 5680
@@ -155,10 +106,12 @@ class WebhookHandler(BaseHTTPRequestHandler):
             self.manager.log_webhook(f"HTTP: {message}")
     
     def do_GET(self):
-        """Handle GET requests"""
+        logger.log(f"do_GET entry: {self.path}")
         try:
             parsed_path = urllib.parse.urlparse(self.path)
             path = parsed_path.path
+            query = urllib.parse.parse_qs(parsed_path.query)
+            logger.log(f"GET {path}")
             
             # Log the incoming request
             if self.manager:
@@ -180,12 +133,19 @@ class WebhookHandler(BaseHTTPRequestHandler):
                 self.serve_adb_ips()
             elif path == '/webhook/load-numbers':
                 self.serve_load_numbers()
+            elif path == '/webhook/load-details':
+                self.serve_load_details(query)
             elif path == '/network-server.png':
                 self.serve_icon()
+            elif path == '/webhook/logs':
+                self.serve_logs()
+            elif path == '/webhook/ping':
+                self.serve_ping()
             else:
                 self.send_error(404, "Endpoint not found")
                 
         except Exception as e:
+            logger.log(f"Webhook GET error: {e}\n{traceback.format_exc()}", 'ERROR')
             error_msg = f"Webhook GET error: {e}"
             if self.manager:
                 self.manager.log_webhook(error_msg)
@@ -193,7 +153,7 @@ class WebhookHandler(BaseHTTPRequestHandler):
             self.send_error(500, f"Internal server error: {e}")
     
     def do_POST(self):
-        """Handle POST requests for controls"""
+        logger.log(f"do_POST entry: {self.path}")
         try:
             parsed_path = urllib.parse.urlparse(self.path)
             path = parsed_path.path
@@ -216,6 +176,7 @@ class WebhookHandler(BaseHTTPRequestHandler):
                 self.send_error(404, "Endpoint not found")
                 
         except Exception as e:
+            logger.log(f"Webhook POST error: {e}\n{traceback.format_exc()}", 'ERROR')
             error_msg = f"Webhook POST error: {e}"
             if self.manager:
                 self.manager.log_webhook(error_msg)
@@ -262,6 +223,7 @@ class WebhookHandler(BaseHTTPRequestHandler):
         except json.JSONDecodeError:
             self.send_error(400, "Invalid JSON")
         except Exception as e:
+            logger.log(f"Control error: {e}\n{traceback.format_exc()}", 'ERROR')
             self.send_error(500, f"Control error: {e}")
     
     def handle_adb_ips(self, post_data):
@@ -272,8 +234,9 @@ class WebhookHandler(BaseHTTPRequestHandler):
             
             if action == 'add':
                 ip = data.get('ip')
+                name = data.get('name')
                 if ip:
-                    self.manager.add_adb_ip(ip)
+                    self.manager.add_adb_ip(ip, name)
                     response = {'status': 'success', 'message': f'Added IP: {ip}'}
                 else:
                     response = {'status': 'error', 'message': 'IP address required'}
@@ -314,6 +277,7 @@ class WebhookHandler(BaseHTTPRequestHandler):
         except json.JSONDecodeError:
             self.send_error(400, "Invalid JSON")
         except Exception as e:
+            logger.log(f"ADB IP error: {e}\n{traceback.format_exc()}", 'ERROR')
             self.send_error(500, f"ADB IP error: {e}")
     
     def handle_test_connection(self, post_data):
@@ -342,6 +306,7 @@ class WebhookHandler(BaseHTTPRequestHandler):
         except json.JSONDecodeError:
             self.send_error(400, "Invalid JSON")
         except Exception as e:
+            logger.log(f"Test connection error: {e}\n{traceback.format_exc()}", 'ERROR')
             self.send_error(500, f"Test connection error: {e}")
     
     def serve_dwjjob(self):
@@ -354,6 +319,7 @@ class WebhookHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps(data, indent=2).encode())
         except Exception as e:
+            logger.log(f"Failed to serve DWJJOB data: {e}\n{traceback.format_exc()}", 'ERROR')
             self.send_error(500, f"Failed to serve DWJJOB data: {e}")
     
     def serve_dwvveh(self):
@@ -366,6 +332,7 @@ class WebhookHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps(data, indent=2).encode())
         except Exception as e:
+            logger.log(f"Failed to serve DWVVEH data: {e}\n{traceback.format_exc()}", 'ERROR')
             self.send_error(500, f"Failed to serve DWVVEH data: {e}")
     
     def serve_health(self):
@@ -431,6 +398,7 @@ class WebhookHandler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps(status, indent=2).encode())
             
         except Exception as e:
+            logger.log(f"Status error: {e}\n{traceback.format_exc()}", 'ERROR')
             error_msg = f"Status error: {e}"
             if self.manager:
                 self.manager.log_webhook(error_msg)
@@ -451,6 +419,7 @@ class WebhookHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps(result, indent=2).encode())
         except Exception as e:
+            logger.log(f"Failed to serve ADB IPs: {e}\n{traceback.format_exc()}", 'ERROR')
             self.send_error(500, f"Failed to serve ADB IPs: {e}")
 
     def serve_load_numbers(self):
@@ -463,7 +432,27 @@ class WebhookHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps(data, indent=2).encode())
         except Exception as e:
+            logger.log(f"Failed to serve load numbers: {e}\n{traceback.format_exc()}", 'ERROR')
             self.send_error(500, f"Failed to serve load numbers: {e}")
+
+    def serve_load_details(self, query):
+        """Serve all loads/cars for a given load number as JSON"""
+        try:
+            load_number = None
+            if 'loadNumber' in query:
+                load_number = query['loadNumber'][0]
+            if not load_number:
+                self.send_error(400, "Missing loadNumber parameter")
+                return
+            data = self.manager.get_load_details(load_number)
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            self.wfile.write(json.dumps(data, indent=2).encode())
+        except Exception as e:
+            logger.log(f"Failed to serve load details: {e}\n{traceback.format_exc()}", 'ERROR')
+            self.send_error(500, f"Failed to serve load details: {e}")
 
     def serve_icon(self):
         """Serve the application icon"""
@@ -482,6 +471,7 @@ class WebhookHandler(BaseHTTPRequestHandler):
             else:
                 self.send_error(404, "Icon file not found")
         except Exception as e:
+            logger.log(f"Failed to serve icon: {e}\n{traceback.format_exc()}", 'ERROR')
             self.send_error(500, f"Failed to serve icon: {e}")
 
     def serve_web_ui(self):
@@ -518,10 +508,39 @@ class WebhookHandler(BaseHTTPRequestHandler):
                 self.wfile.write(fallback_html.encode('utf-8'))
                 
         except Exception as e:
+            logger.log(f"Failed to serve web UI: {e}\n{traceback.format_exc()}", 'ERROR')
             self.send_error(500, f"Failed to serve web UI: {e}")
+
+    def serve_logs(self):
+        try:
+            logs = logger.tail(200)
+            self.send_response(200)
+            self.send_header('Content-type', 'text/plain')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            self.wfile.write(logs.encode())
+        except Exception as e:
+            logger.log(f"Failed to serve logs: {e}\n{traceback.format_exc()}", 'ERROR')
+            self.send_error(500, f"Failed to serve logs: {e}")
+
+    def serve_ping(self):
+        try:
+            logger.log("serve_ping called")
+            self.send_response(200)
+            self.send_header('Content-type', 'text/plain')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            self.wfile.write(b'pong')
+        except Exception as e:
+            logger.log(f"Failed to serve ping: {e}\n{traceback.format_exc()}", 'ERROR')
+            self.send_response(500)
+            self.send_header('Content-type', 'text/plain')
+            self.end_headers()
+            self.wfile.write(b'Internal server error (serve_ping)')
 
 class BTTAutoManager:
     def __init__(self):
+        logger.log('BTTAutoManager.__init__ START')
         # Set start_time first before any other operations
         self.start_time = time.time()
         
@@ -549,8 +568,10 @@ class BTTAutoManager:
             'lastProcessed': None,
             'processingStatus': 'idle'
         }
-        
+        logger.log('BTTAutoManager.__init__ END')
+    
     def load_config(self):
+        logger.log('load_config START')
         """Load configuration from JSON file"""
         default_config = {
             "auto_enabled": False,
@@ -573,13 +594,15 @@ class BTTAutoManager:
                     for key, value in default_config.items():
                         if key not in config:
                             config[key] = value
+                    logger.log(f'Loaded config: {config}')
                     return config
             except Exception as e:
-                console.print(f"[red]Error loading config: {e}[/red]")
+                logger.log(f'Error loading config: {e}')
                 return default_config
         else:
             # Create default config file
             self.save_config(default_config)
+            logger.log('Created default config')
             return default_config
     
     def save_config(self, config=None):
@@ -592,16 +615,17 @@ class BTTAutoManager:
         except Exception as e:
             console.print(f"[red]Error saving config: {e}[/red]")
     
-    def add_adb_ip(self, ip):
+    def add_adb_ip(self, ip, name=None):
         """Add ADB IP address to the list"""
         if ip not in [device.get('ip', device) for device in self.config.get('adb_ips', [])]:
             if 'adb_ips' not in self.config:
                 self.config['adb_ips'] = []
             # Store as object with ip and name
-            self.config['adb_ips'].append({'ip': ip, 'name': f'Device {len(self.config["adb_ips"]) + 1}'})
+            device_name = name if name else f'Device {len(self.config["adb_ips"]) + 1}'
+            self.config['adb_ips'].append({'ip': ip, 'name': device_name})
             self.save_config()
-            self.log_webhook(f"Added ADB IP: {ip}")
-            console.print(f"[green]Added ADB IP: {ip}[/green]")
+            self.log_webhook(f"Added ADB IP: {ip} ({device_name})")
+            console.print(f"[green]Added ADB IP: {ip} ({device_name})[/green]")
     
     def remove_adb_ip(self, ip):
         """Remove ADB IP address from the list"""
@@ -613,7 +637,7 @@ class BTTAutoManager:
                 self.save_config()
                 self.log_webhook(f"Removed ADB IP: {ip}")
                 console.print(f"[yellow]Removed ADB IP: {ip}[/yellow]")
-            break
+                break
     
     def rename_adb_device(self, ip, name):
         """Rename an ADB device"""
@@ -749,10 +773,12 @@ class BTTAutoManager:
             self.webhook_logs = self.webhook_logs[-100:]
     
     def extract_sqlite_data(self, db_path):
+        logger.log(f'extract_sqlite_data START: {db_path}')
         """Extract data from SQLite database"""
         try:
             if not os.path.exists(db_path):
                 self.log_webhook(f"Database file not found: {db_path}")
+                logger.log(f"Database file not found: {db_path}")
                 return None
             
             conn = sqlite3.connect(db_path)
@@ -799,11 +825,12 @@ class BTTAutoManager:
                 'lastProcessed': datetime.now().isoformat(),
                 'processingStatus': 'processed'
             }
-            
+            logger.log(f"Extracted {len(dwjjob_data)} DWJJOB and {len(dwvveh_data)} DWVVEH records")
             self.log_webhook(f"Extracted {len(dwjjob_data)} DWJJOB records and {len(dwvveh_data)} DWVVEH records")
             return self.extracted_data
             
         except Exception as e:
+            logger.log(f"Error extracting SQLite data: {e}")
             self.log_webhook(f"Error extracting SQLite data: {e}")
             self.extracted_data['processingStatus'] = 'error'
             return None
@@ -850,6 +877,62 @@ class BTTAutoManager:
                 'error': str(e)
             }
     
+    def get_load_details(self, load_number):
+        """Return all loads/cars for a given load number, with code-letter linking for UI"""
+        dwjjob = self.extracted_data.get('DWJJOB', [])
+        dwvveh = self.extracted_data.get('DWVVEH', [])
+        # Filter jobs for this load
+        jobs = [row for row in dwjjob if str(row.get('dwjLoad')) == str(load_number)]
+        # Assign letters to unique collection and delivery codes
+        col_codes = sorted(set(row.get('dwjAdrCod') for row in jobs if row.get('dwjType') == 'C' and row.get('dwjAdrCod')))
+        del_codes = sorted(set(row.get('dwjAdrCod') for row in jobs if row.get('dwjType') == 'D' and row.get('dwjAdrCod')))
+        col_code_to_letter = {code: chr(65+i) for i, code in enumerate(col_codes)}  # A, B, C...
+        del_code_to_letter = {code: chr(65+i) for i, code in enumerate(del_codes)}
+        # Collections and deliveries with letters
+        collections = [
+            {
+                'dwjName': row.get('dwjName', ''),
+                'dwjPostco': row.get('dwjPostco', ''),
+                'dwjAdrCod': row.get('dwjAdrCod', ''),
+                'dwjLat': row.get('dwjLat', ''),
+                'dwjLong': row.get('dwjLong', ''),
+                'letter': col_code_to_letter.get(row.get('dwjAdrCod'), '')
+            }
+            for row in jobs if row.get('dwjType') == 'C'
+        ]
+        deliveries = [
+            {
+                'dwjName': row.get('dwjName', ''),
+                'dwjPostco': row.get('dwjPostco', ''),
+                'dwjAdrCod': row.get('dwjAdrCod', ''),
+                'dwjLat': row.get('dwjLat', ''),
+                'dwjLong': row.get('dwjLong', ''),
+                'letter': del_code_to_letter.get(row.get('dwjAdrCod'), '')
+            }
+            for row in jobs if row.get('dwjType') == 'D'
+        ]
+        # Filter vehicles for this load, and link to collection/delivery by code
+        vehicles = []
+        for row in dwvveh:
+            if str(row.get('dwvLoad')) == str(load_number):
+                col_letter = col_code_to_letter.get(row.get('dwvColCod'), '')
+                del_letter = del_code_to_letter.get(row.get('dwvDelCod'), '')
+                vehicles.append({
+                    'dwvVehRef': row.get('dwvVehRef', ''),
+                    'dwvModDes': row.get('dwvModDes', ''),
+                    'colLetter': col_letter,
+                    'delLetter': del_letter
+                })
+        return {
+            'loadNumber': load_number,
+            'collections': collections,
+            'deliveries': deliveries,
+            'vehicles': vehicles,
+            'collectionCount': len(collections),
+            'deliveryCount': len(deliveries),
+            'vehicleCount': len(vehicles)
+        }
+
     def get_status_data(self):
         """Get status data for webhook"""
         now = datetime.now()
@@ -967,6 +1050,7 @@ class BTTAutoManager:
             console.print("[yellow]Webhook server stopped[/yellow]")
     
     def update_last_stats(self):
+        logger.log('update_last_stats START')
         """Update last known statistics from the database"""
         try:
             db_path = LOCAL_DB_PATH
@@ -1004,8 +1088,11 @@ class BTTAutoManager:
                 })
                 self.save_config()
                 self.last_stats = {'DWJJOB': locations, 'DWVVEH': cars, 'unique_loads': loads}
+                logger.log(f'update_last_stats: locations={locations}, cars={cars}, loads={loads}')
         except Exception as e:
+            logger.log(f'Warning: Could not update stats: {e}')
             console.print(f"[yellow]Warning: Could not update stats: {e}[/yellow]")
+        logger.log('update_last_stats END')
     
     def run_getsql(self):
         """Run the SQL extraction process"""
@@ -1354,27 +1441,143 @@ class BTTAutoManager:
         
         console.input("\nPress Enter to continue...")
 
+# Consolidated functions from getsql.py
+def run_adb(cmd, timeout=15, capture_output=True):
+    """Run ADB command with error handling"""
+    try:
+        result = subprocess.run(cmd, shell=True, capture_output=capture_output, text=True, timeout=timeout)
+        if result.returncode != 0:
+            return None
+        return result.stdout.strip() if capture_output else True
+    except subprocess.TimeoutExpired:
+        return None
+    except Exception as e:
+        return None
+
+def get_connected_device():
+    """Get the first connected ADB device"""
+    out = run_adb('adb devices')
+    if not isinstance(out, str):
+        return None
+    lines = out.splitlines()
+    for line in lines[1:]:
+        if line.strip() and ('device' in line and not 'offline' in line):
+            return line.split()[0]
+    return None
+
+def run_adb_with_root(cmd, device, timeout=10):
+    """Run ADB command with root access fallback"""
+    # Try non-root first
+    try:
+        out = run_adb(cmd, timeout=timeout)
+        if out is not None and 'Permission denied' not in str(out):
+            return out, 'non-root', None
+    except Exception as e:
+        return None, 'non-root', f"Non-root error: {e}"
+    
+    # Try su 0 (works on some devices)
+    shell_part = cmd.split('shell',1)[1].strip() if 'shell' in cmd else cmd
+    su0_cmd = f'adb -s {device} shell su 0 {shell_part}'
+    try:
+        su0_out = run_adb(su0_cmd, timeout=timeout)
+        if su0_out is not None and 'Permission denied' not in str(su0_out):
+            return su0_out, 'su0', None
+    except Exception as e:
+        return None, 'su0', f"Su0 error: {e}"
+    
+    # Try su -c (works on other devices)
+    rootc_cmd = f'adb -s {device} shell su -c "{shell_part}"'
+    try:
+        rootc_out = run_adb(rootc_cmd, timeout=timeout)
+        if rootc_out is not None and 'Permission denied' not in str(rootc_out):
+            return rootc_out, 'suc', None
+    except Exception as e:
+        return None, 'suc', f"RootC error: {e}"
+    
+    return None, 'all-failed', 'All root forms failed'
+
+def copy_to_sdcard(device, use_root=False):
+    """Copy database from device to sdcard"""
+    dst = '/sdcard/sql.db'
+    if use_root == 'su0':
+        copy_cmd = f'adb -s {device} shell su 0 cp {DEVICE_DB_PATH} {dst}'
+    elif use_root == 'suc':
+        copy_cmd = f'adb -s {device} shell su -c "cp {DEVICE_DB_PATH} {dst}"'
+    else:
+        copy_cmd = f'adb -s {device} shell cp "{DEVICE_DB_PATH}" "{dst}"'
+    out = run_adb(copy_cmd, timeout=15)
+    return out is not None
+
+def pull_from_sdcard(device):
+    """Pull database from sdcard to local"""
+    if not os.path.exists(DB_DIR):
+        os.makedirs(DB_DIR)
+    pull_cmd = f'adb -s {device} pull /sdcard/sql.db "{LOCAL_DB_PATH}"'
+    out = run_adb(pull_cmd, timeout=30)
+    return os.path.exists(LOCAL_DB_PATH)
+
+def extract_sqlite_data_from_device():
+    """Main extraction function from getsql.py"""
+    try:
+        # Check ADB
+        if not run_adb('adb version'):
+            return "ADB not available"
+        
+        # Get connected device
+        device = get_connected_device()
+        if not device:
+            return "No ADB device connected"
+        
+        # Check if database exists on device
+        cmd = f'adb -s {device} shell ls -l "{DEVICE_DB_PATH}"'
+        out, used_root, err = run_adb_with_root(cmd, device, timeout=10)
+        
+        if not out or 'No such file' in str(out) or 'Permission denied' in str(out):
+            return f"Database not found on device: {err or 'File not accessible'}"
+        
+        # Copy to sdcard
+        if not copy_to_sdcard(device, used_root):
+            return "Failed to copy database to sdcard"
+        
+        # Pull from sdcard
+        if not pull_from_sdcard(device):
+            return "Failed to pull database from sdcard"
+        
+        # Clean up sdcard
+        cleanup_cmd = f'adb -s {device} shell rm /sdcard/sql.db'
+        run_adb(cleanup_cmd, timeout=10)
+        
+        return "SUCCESS"
+        
+    except Exception as e:
+        return f"Extraction error: {str(e)}"
+
 def main():
-    """Main function"""
+    logger.log('main() START')
     console.print("[bold blue]BTT Auto Manager[/bold blue]")
     console.print("Automated SQL Database Extraction Tool with Webhooks\n")
     
     try:
         # Initialize manager
         console.print("[blue]Initializing manager...[/blue]")
+        logger.log('main() initializing manager')
         manager = BTTAutoManager()
         
         # Update initial status
         console.print("[blue]Updating initial status...[/blue]")
+        logger.log('main() updating initial status')
         manager.update_last_stats()
         
         # Start webhook server if enabled
         console.print("[blue]Starting webhook server...[/blue]")
+        logger.log('main() starting webhook server')
         if manager.config.get("webhook_enabled", True):
             manager.start_webhook_server()
             console.print("[green]Webhook server started successfully[/green]")
+            logger.log('main() webhook server started successfully')
         else:
             console.print("[yellow]Webhook server disabled[/yellow]")
+            logger.log('main() webhook server disabled')
         
         # Check if running in non-interactive mode (Docker container)
         import sys
@@ -1408,10 +1611,12 @@ def main():
             manager.show_menu()
             
     except Exception as e:
-        console.print(f"[red]Error in main function: {e}[/red]")
+        logger.log(f'Exception in main(): {e}')
         import traceback
+        console.print(f"[red]Exception in main(): {e}[/red]")
         console.print(f"[red]Traceback: {traceback.format_exc()}[/red]")
         raise
+    logger.log('main() END')
 
 if __name__ == "__main__":
     main() 
