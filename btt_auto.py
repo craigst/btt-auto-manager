@@ -349,16 +349,18 @@ class WebhookHandler(BaseHTTPRequestHandler):
             if not self.manager:
                 self.send_error(500, "Manager not initialized")
                 return
-                
             # Check ADB device connections with error handling
             adb_ips = []
             any_connected = False
+            any_unauthorized = False
             try:
                 adb_ips = self.manager.get_adb_ips()
                 for device in adb_ips:
                     ip = device.get('ip', device)
                     try:
-                        connected, _ = self.manager.test_adb_connection(ip)
+                        connected, _, unauthorized = self.manager.test_adb_connection(ip)
+                        if unauthorized:
+                            any_unauthorized = True
                         if connected:
                             any_connected = True
                             break
@@ -366,7 +368,6 @@ class WebhookHandler(BaseHTTPRequestHandler):
                         self.manager.log_webhook(f"Error testing ADB connection for {ip}: {e}")
             except Exception as e:
                 self.manager.log_webhook(f"Error getting ADB IPs: {e}")
-            
             # If no ADB device is connected, force auto_enabled to False
             if not any_connected:
                 try:
@@ -375,10 +376,12 @@ class WebhookHandler(BaseHTTPRequestHandler):
                     self.manager.save_config()
                 except Exception as e:
                     self.manager.log_webhook(f"Error updating auto_enabled: {e}")
-            
             # Build status with safe attribute access
+            # Show 'off' if device is connected but auto-update is off
+            auto_status = 'enabled' if self.manager.config.get('auto_enabled', False) else ('off' if any_connected else 'disabled')
             status = {
                 'autoEnabled': self.manager.config.get('auto_enabled', False),
+                'autoStatus': auto_status,
                 'intervalMinutes': self.manager.config.get('interval_minutes', 5),
                 'uptime': time.time() - getattr(self.manager, 'start_time', time.time()),
                 'lastLocations': self.manager.config.get('last_locations', 0),
@@ -388,15 +391,15 @@ class WebhookHandler(BaseHTTPRequestHandler):
                 'webhookServer': 'Running',
                 'timestamp': datetime.now().isoformat(),
                 'adbConnected': any_connected,
+                'adbUnauthorized': any_unauthorized,
+                'adbAttentionNeeded': (not any_connected and any_unauthorized),
                 'preferredDevice': self.manager.config.get('preferred_device', None)
             }
-            
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
             self.send_header('Access-Control-Allow-Origin', '*')
             self.end_headers()
             self.wfile.write(json.dumps(status, indent=2).encode())
-            
         except Exception as e:
             logger.log(f"Status error: {e}\n{traceback.format_exc()}", 'ERROR')
             error_msg = f"Status error: {e}"
@@ -405,14 +408,14 @@ class WebhookHandler(BaseHTTPRequestHandler):
             self.send_error(500, error_msg)
     
     def serve_adb_ips(self):
-        """Serve ADB IP list with connection status"""
+        """Serve ADB IP list with connection status and unauthorized status"""
         try:
             adb_ips = self.manager.get_adb_ips()
             result = []
             for device in adb_ips:
                 ip = device.get('ip', device)
-                connected, _ = self.manager.test_adb_connection(ip)
-                result.append({'ip': ip, 'name': device.get('name', ip), 'connected': connected})
+                connected, _, unauthorized = self.manager.test_adb_connection(ip)
+                result.append({'ip': ip, 'name': device.get('name', ip), 'connected': connected, 'unauthorized': unauthorized})
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
             self.send_header('Access-Control-Allow-Origin', '*')
@@ -543,7 +546,6 @@ class BTTAutoManager:
         logger.log('BTTAutoManager.__init__ START')
         # Set start_time first before any other operations
         self.start_time = time.time()
-        
         self.config = self.load_config()
         self.running = False
         self.last_run = None
@@ -553,21 +555,20 @@ class BTTAutoManager:
         self.webhook_thread = None
         self.webhook_logs = []
         self.next_update_time = None
-        
-        # Initialize attributes from config with safe defaults
+        # Always sync auto_enabled with config
         self.auto_enabled = self.config.get('auto_enabled', False)
         self.interval_minutes = self.config.get('interval_minutes', 5)
         self.last_locations = self.config.get('last_locations', 0)
         self.last_cars = self.config.get('last_cars', 0)
         self.last_loads = self.config.get('last_loads', 0)
         self.last_processed = self.config.get('last_sql_atime', None)
-        
         self.extracted_data = {
             'DWJJOB': [],
             'DWVVEH': [],
             'lastProcessed': None,
             'processingStatus': 'idle'
         }
+        logger.log(f'BTTAutoManager.__init__ loaded config: auto_enabled={self.auto_enabled}, interval_minutes={self.interval_minutes}')
         logger.log('BTTAutoManager.__init__ END')
     
     def load_config(self):
@@ -722,7 +723,7 @@ class BTTAutoManager:
             if ping_result.returncode != 0:
                 self.log_webhook(f"Ping test FAIL for {ip} - device not reachable")
                 command_output += f"\n❌ Device is not reachable via ping - Android may be offline or device disconnected\n"
-                return False, command_output
+                return (False, command_output, False)  # (connected, output, unauthorized)
             
             command_output += f"\n✅ Device is reachable via ping - proceeding with ADB connection test\n\n"
             
@@ -746,22 +747,27 @@ class BTTAutoManager:
                 if devices_result.returncode == 0:
                     lines = devices_result.stdout.splitlines()
                     for line in lines[1:]:  # Skip the first line (header)
-                        if ip in line and 'device' in line and 'offline' not in line:
-                            self.log_webhook(f"ADB connection test PASS for {ip}")
-                            command_output += f"\n✅ ADB connection successful - device is online and ready\n"
-                            return True, command_output
+                        if ip in line:
+                            if 'unauthorized' in line:
+                                self.log_webhook(f"ADB connection test UNAUTHORIZED for {ip}")
+                                command_output += f"\n❌ ADB connection failed - device is UNAUTHORIZED\n"
+                                return (False, command_output, True)
+                            if 'device' in line and 'offline' not in line:
+                                self.log_webhook(f"ADB connection test PASS for {ip}")
+                                command_output += f"\n✅ ADB connection successful - device is online and ready\n"
+                                return (True, command_output, False)
                 
                 self.log_webhook(f"ADB connection test FAIL for {ip} - device not found in device list")
                 command_output += f"\n❌ ADB connection failed - device not found in device list\n"
-                return False, command_output
+                return (False, command_output, False)
             else:
                 self.log_webhook(f"ADB connection test FAIL for {ip} - connection failed")
                 command_output += f"\n❌ ADB connection failed - Android may be offline or ADB not enabled\n"
-                return False, command_output
+                return (False, command_output, False)
         except Exception as e:
             command_output += f"\nException: {e}\n"
             self.log_webhook(f"ADB connection test ERROR for {ip}: {e}")
-            return False, command_output
+            return (False, command_output, False)
     
     def log_webhook(self, message):
         """Log webhook activity"""
@@ -1098,22 +1104,19 @@ class BTTAutoManager:
         """Run the SQL extraction process"""
         try:
             console.print("[blue]Running SQL extraction...[/blue]")
-            
             # Use the consolidated extraction function
             result = extract_sqlite_data_from_device()
-            
             output = {
-                'result': result,
-                'success': result == "SUCCESS"
+                'result': result["result"] if isinstance(result, dict) else result,
+                'success': result.get("success", result == "SUCCESS") if isinstance(result, dict) else (result == "SUCCESS"),
+                'debug': result.get("debug") if isinstance(result, dict) else None
             }
-            
-            if result == "SUCCESS":
+            if output['success']:
                 console.print("[green]SQL extraction completed successfully[/green]")
                 self.last_run = datetime.now()
                 self.update_last_stats()
             else:
-                console.print(f"[red]SQL extraction failed: {result}[/red]")
-            
+                console.print(f"[red]SQL extraction failed: {output['result']}\nDebug: {output['debug']}[/red]")
             return output
         except Exception as e:
             console.print(f"[red]Error running SQL extraction: {e}[/red]")
@@ -1135,13 +1138,13 @@ class BTTAutoManager:
             self.log_webhook(f"DEBUG: Config after toggle: {self.config.get('auto_enabled', False)}")
             return {'success': True, 'status': 'success', 'autoEnabled': new_state}
         else:
-            # Only allow toggling ON if an ADB device is connected
+            # Allow toggling ON if ANY ADB device is connected (not just preferred)
             adb_ips = self.get_adb_ips()
             any_connected = False
             for device in adb_ips:
                 ip = device.get('ip', device)
                 try:
-                    connected, _ = self.test_adb_connection(ip)
+                    connected, _, _ = self.test_adb_connection(ip)
                     if connected:
                         any_connected = True
                         break
@@ -1202,6 +1205,7 @@ class BTTAutoManager:
             return
         self.running = True
         self.config["auto_enabled"] = True
+        self.auto_enabled = True
         self.save_config()
         self.log_webhook(f"DEBUG: start_auto_update - config saved. auto_enabled={self.config.get('auto_enabled', False)}")
         self.auto_thread = threading.Thread(target=self.auto_update_loop, daemon=True)
@@ -1214,6 +1218,7 @@ class BTTAutoManager:
         self.log_webhook(f"DEBUG: stop_auto_update called. running={self.running}")
         self.running = False
         self.config["auto_enabled"] = False
+        self.auto_enabled = False
         self.save_config()
         self.log_webhook(f"DEBUG: stop_auto_update - config saved. auto_enabled={self.config.get('auto_enabled', False)}")
         if self.auto_thread and self.auto_thread.is_alive():
@@ -1519,38 +1524,89 @@ def pull_from_sdcard(device):
 def extract_sqlite_data_from_device():
     """Main extraction function from getsql.py"""
     try:
+        debug_log = []
         # Check ADB
         if not run_adb('adb version'):
-            return "ADB not available"
-        
+            debug_log.append("ADB not available")
+            return {"result": "ADB not available", "success": False, "debug": debug_log}
         # Get connected device
         device = get_connected_device()
         if not device:
-            return "No ADB device connected"
-        
-        # Check if database exists on device
-        cmd = f'adb -s {device} shell ls -l "{DEVICE_DB_PATH}"'
-        out, used_root, err = run_adb_with_root(cmd, device, timeout=10)
-        
-        if not out or 'No such file' in str(out) or 'Permission denied' in str(out):
-            return f"Database not found on device: {err or 'File not accessible'}"
-        
-        # Copy to sdcard
-        if not copy_to_sdcard(device, used_root):
-            return "Failed to copy database to sdcard"
-        
-        # Pull from sdcard
-        if not pull_from_sdcard(device):
-            return "Failed to pull database from sdcard"
-        
-        # Clean up sdcard
-        cleanup_cmd = f'adb -s {device} shell rm /sdcard/sql.db'
-        run_adb(cleanup_cmd, timeout=10)
-        
-        return "SUCCESS"
-        
+            debug_log.append("No ADB device connected")
+            return {"result": "No ADB device connected", "success": False, "debug": debug_log}
+        # Try all possible paths
+        possible_paths = [
+            '/data/data/com.bca.bcatrack/cache/cache/data/sql.db',
+            '/data/data/com.bca.bcatrack/cache/data/sql.db',
+            '/data/data/com.bca.bcatrack/files/sql.db',
+            '/data/data/com.bca.bcatrack/databases/sql.db',
+            '/sdcard/sql.db'
+        ]
+        for db_path in possible_paths:
+            debug_log.append(f"Trying path: {db_path}")
+            # Try all root methods for ls
+            found = False
+            for root_method in [None, 'su0', 'suc']:
+                if root_method == 'su0':
+                    cmd = f'adb -s {device} shell su 0 ls -l "{db_path}"'
+                elif root_method == 'suc':
+                    cmd = f'adb -s {device} shell su -c "ls -l {db_path}"'
+                else:
+                    cmd = f'adb -s {device} shell ls -l "{db_path}"'
+                out = run_adb(cmd, timeout=10)
+                debug_log.append(f"ls ({root_method or 'no-root'}): {cmd} => {out}")
+                out_str = str(out) if out is not None else ''
+                if out and 'No such file' not in out_str and 'Permission denied' not in out_str:
+                    found = True
+                    used_root = root_method
+                    break
+            if not found:
+                debug_log.append(f"File not found or not accessible at {db_path}")
+                continue
+            # Try all root methods for cp to sdcard
+            dst = '/sdcard/sql.db'
+            copy_success = False
+            for root_method in [used_root, None, 'su0', 'suc']:
+                if root_method == 'su0':
+                    copy_cmd = f'adb -s {device} shell su 0 cp "{db_path}" {dst}'
+                elif root_method == 'suc':
+                    copy_cmd = f'adb -s {device} shell su -c "cp {db_path} {dst}"'
+                else:
+                    copy_cmd = f'adb -s {device} shell cp "{db_path}" {dst}'
+                out = run_adb(copy_cmd, timeout=15)
+                debug_log.append(f"cp ({root_method or 'no-root'}): {copy_cmd} => {out}")
+                # Check if file is on sdcard
+                check_cmd = f'adb -s {device} shell ls -l {dst}'
+                check_out = run_adb(check_cmd, timeout=10)
+                debug_log.append(f"ls sdcard: {check_cmd} => {check_out}")
+                check_out_str = str(check_out) if check_out is not None else ''
+                if check_out and 'No such file' not in check_out_str and 'Permission denied' not in check_out_str:
+                    copy_success = True
+                    break
+            # Try to pull from sdcard
+            if copy_success:
+                pull_cmd = f'adb -s {device} pull {dst} "{LOCAL_DB_PATH}"'
+                pull_out = run_adb(pull_cmd, timeout=30)
+                debug_log.append(f"pull: {pull_cmd} => {pull_out}")
+                if os.path.exists(LOCAL_DB_PATH):
+                    # Clean up sdcard
+                    cleanup_cmd = f'adb -s {device} shell rm {dst}'
+                    run_adb(cleanup_cmd, timeout=10)
+                    debug_log.append(f"cleanup: {cleanup_cmd}")
+                    return {"result": "SUCCESS", "success": True, "debug": debug_log}
+                else:
+                    debug_log.append("Failed to pull file from sdcard")
+            # If copy to sdcard failed, try to pull directly
+            pull_direct_cmd = f'adb -s {device} pull "{db_path}" "{LOCAL_DB_PATH}"'
+            pull_direct_out = run_adb(pull_direct_cmd, timeout=30)
+            debug_log.append(f"direct pull: {pull_direct_cmd} => {pull_direct_out}")
+            if os.path.exists(LOCAL_DB_PATH):
+                return {"result": "SUCCESS", "success": True, "debug": debug_log}
+            else:
+                debug_log.append("Direct pull failed")
+        return {"result": "Database not found or not accessible on any known path", "success": False, "debug": debug_log}
     except Exception as e:
-        return f"Extraction error: {str(e)}"
+        return {"result": f"Extraction error: {str(e)}", "success": False, "debug": [str(e)]}
 
 def main():
     logger.log('main() START')

@@ -405,6 +405,13 @@
         .settings-btn:hover {
             background-color: rgba(255, 255, 255, 0.1);
         }
+        .flash {
+            animation: flash 1s infinite alternate;
+        }
+        @keyframes flash {
+            0% { background: #ef4444; color: #fff; }
+            100% { background: #1a1a1a; color: #ef4444; }
+        }
     </style>
 </head>
 <body>
@@ -517,8 +524,10 @@
                     <h3 style="margin:0 0 10px 0;">Manual Actions</h3>
                     <button class="button" onclick="runExtraction()">Run Extraction Now</button>
                     <button class="button" onclick="updateStatus()">Update Status</button>
+                    <button class="button" onclick="reloadData()">Reload Data</button>
                 </div>
                 <div id="control-result"></div>
+                <div id="extraction-log" style="margin-top:10px;"></div>
             </div>
         </div>
     </div>
@@ -593,12 +602,25 @@
                     return;
                 }
                 
+                let attentionHtml = '';
+                if (status.adbAttentionNeeded) {
+                    attentionHtml += `<div class='flash' style='padding:10px 0;font-size:1.2em;text-align:center;font-weight:bold;'>⚠️ Attention Needed: ADB device unauthorized</div>`;
+                }
+                if (status.adbUnauthorized) {
+                    attentionHtml += `<div class='flash' style='padding:10px 0;font-size:1.1em;text-align:center;'>ADB device status: <b>Unauthorized</b></div>`;
+                }
+                // Show 'Off' if device is connected but auto-update is off
+                let autoStatusText = 'Disabled';
+                if (status.autoStatus === 'enabled') autoStatusText = '🟢 Enabled';
+                else if (status.autoStatus === 'off') autoStatusText = 'Off';
+                else autoStatusText = 'Disabled';
                 const html = `
+                    ${attentionHtml}
                     <div class="status-grid">
                         <div class="status-card">
                             <h3>Auto-Update Status</h3>
-                            <div class="status-value ${status.autoEnabled ? 'status-online' : 'status-offline'}">
-                                ${status.autoEnabled ? '🟢 Enabled' : '🔴 Disabled'}
+                            <div class="status-value ${status.autoEnabled ? 'status-online' : (status.autoStatus === 'off' ? 'status-offline' : 'status-offline')}">
+                                ${autoStatusText}
                             </div>
                         </div>
                         <div class="status-card">
@@ -616,13 +638,12 @@
                             <div class="status-value">${status.uptimeFormatted || (Math.round(status.uptime || 0) + ' seconds')}</div>
                         </div>
                     </div>
+                    <div id="debug-log-output" style="margin-top:20px;font-size:0.95em;color:#9ca3af;"></div>
                 `;
                 statusDiv.innerHTML = html;
-                
                 // Update the toggle switches and start countdown
                 updateControlElements(status);
                 startAutoUpdateCountdown(status);
-                
             } catch (error) {
                 statusDiv.innerHTML = `<div class="error">Error loading status: ${error.message}</div>`;
             }
@@ -786,56 +807,41 @@
                 alert('No DWJJOB data available');
                 return;
             }
-            
-            const data = window.dwjjobData.slice(0, 10); // Show first 10 records
-            let html = '<h3>DWJJOB Data (First 10 records)</h3><table class="data-table"><thead><tr>';
-            
-            // Create headers from first record
-            if (data.length > 0) {
-                Object.keys(data[0]).forEach(key => {
-                    html += `<th>${key}</th>`;
+            const data = window.dwjjobData;
+            let html = `<h3>DWJJOB Data <span style='font-size:0.8em;color:#888;'>(${data.length} records)</span></h3>`;
+            html += `<div style='overflow-x:auto;'><div style='max-height:400px;overflow-y:auto;'>`;
+            html += '<table class="data-table"><thead><tr>';
+            Object.keys(data[0]).forEach(key => { html += `<th>${key}</th>`; });
+            html += '</tr></thead><tbody>';
+            data.forEach(record => {
+                html += '<tr>';
+                Object.values(record).forEach(value => {
+                    html += `<td>${value || ''}</td>`;
                 });
-                html += '</tr></thead><tbody>';
-                
-                data.forEach(record => {
-                    html += '<tr>';
-                    Object.values(record).forEach(value => {
-                        html += `<td>${value || ''}</td>`;
-                    });
-                    html += '</tr>';
-                });
-                html += '</tbody></table>';
-            }
-            
+                html += '</tr>';
+            });
+            html += '</tbody></table></div></div>';
             document.getElementById('sql-content').innerHTML = html + '<button class="button" onclick="refreshSQLData()">← Back to Summary</button>';
         }
-
         function showDWVVEHData() {
             if (!window.dwvvehData || window.dwvvehData.length === 0) {
                 alert('No DWVVEH data available');
                 return;
             }
-            
-            const data = window.dwvvehData.slice(0, 10); // Show first 10 records
-            let html = '<h3>DWVVEH Data (First 10 records)</h3><table class="data-table"><thead><tr>';
-            
-            // Create headers from first record
-            if (data.length > 0) {
-                Object.keys(data[0]).forEach(key => {
-                    html += `<th>${key}</th>`;
+            const data = window.dwvvehData;
+            let html = `<h3>DWVVEH Data <span style='font-size:0.8em;color:#888;'>(${data.length} records)</span></h3>`;
+            html += `<div style='overflow-x:auto;'><div style='max-height:400px;overflow-y:auto;'>`;
+            html += '<table class="data-table"><thead><tr>';
+            Object.keys(data[0]).forEach(key => { html += `<th>${key}</th>`; });
+            html += '</tr></thead><tbody>';
+            data.forEach(record => {
+                html += '<tr>';
+                Object.values(record).forEach(value => {
+                    html += `<td>${value || ''}</td>`;
                 });
-                html += '</tr></thead><tbody>';
-                
-                data.forEach(record => {
-                    html += '<tr>';
-                    Object.values(record).forEach(value => {
-                        html += `<td>${value || ''}</td>`;
-                    });
-                    html += '</tr>';
-                });
-                html += '</tbody></table>';
-            }
-            
+                html += '</tr>';
+            });
+            html += '</tbody></table></div></div>';
             document.getElementById('sql-content').innerHTML = html + '<button class="button" onclick="refreshSQLData()">← Back to Summary</button>';
         }
 
@@ -1221,25 +1227,31 @@
             // Show loading state
             if (statusText) statusText.textContent = 'Updating...';
             console.debug('Toggling auto-update...');
-            const result = await apiCall('/webhook/control', 'POST', {
-                action: 'toggle_auto'
-            });
-            console.debug('Toggle response:', result);
-            if (result.status === 'error' || result.error || result.success === false) {
-                showMessage('control-result', `Error: ${result.error || result.message}`, 'error');
-                // Revert toggles
-                toggle.checked = !toggle.checked;
-                if (settingsToggle) settingsToggle.checked = !settingsToggle.checked;
-                if (statusText) statusText.textContent = toggle.checked ? 'Enabled' : 'Disabled';
-            } else {
-                showMessage('control-result', 'Auto-update toggled successfully', 'success');
-                // Update toggles based on server response
-                const newState = result.autoEnabled || false;
-                toggle.checked = newState;
-                if (settingsToggle) settingsToggle.checked = newState;
-                if (statusText) statusText.textContent = newState ? 'Enabled' : 'Disabled';
-                refreshStatus();
+            let debugLog = '';
+            try {
+                const result = await apiCall('/webhook/control', 'POST', {
+                    action: 'toggle_auto'
+                });
+                debugLog += 'Toggle response: ' + JSON.stringify(result) + '\n';
+                if (result.status === 'error' || result.error || result.success === false) {
+                    showMessage('control-result', `Error: ${result.error || result.message}`, 'error');
+                    // Revert toggles
+                    toggle.checked = !toggle.checked;
+                    if (settingsToggle) settingsToggle.checked = !settingsToggle.checked;
+                    if (statusText) statusText.textContent = toggle.checked ? 'Enabled' : 'Disabled';
+                } else {
+                    showMessage('control-result', 'Auto-update toggled successfully', 'success');
+                    // Update toggles based on server response
+                    const newState = result.autoEnabled || false;
+                    toggle.checked = newState;
+                    if (settingsToggle) settingsToggle.checked = newState;
+                    if (statusText) statusText.textContent = newState ? 'Enabled' : 'Disabled';
+                    refreshStatus();
+                }
+            } catch (err) {
+                debugLog += 'Toggle error: ' + err + '\n';
             }
+            showDebugLog(debugLog);
         }
 
         async function setUpdateInterval() {
@@ -1264,19 +1276,43 @@
             }
         }
 
-        async function runExtraction() {
-            const result = await apiCall('/webhook/control', 'POST', {
-                action: 'run_extraction'
+        // Add a Reload Data button in settings
+        function reloadData() {
+            fetch('/status') // dummy call to keep UI responsive
+            .then(() => {
+                refreshStatus();
+                refreshSQLData();
+                refreshADBIPs();
+                showMessage('control-result', 'Data reloaded from sql.db', 'success');
             });
-            
-            if (result.error) {
-                showMessage('control-result', `Error: ${result.error}`, 'error');
-            } else {
-                showMessage('control-result', 'SQL extraction started', 'success');
-                setTimeout(() => {
+        }
+
+        // Manual Extraction log
+        let extractionLog = [];
+        async function runExtraction() {
+            const logDiv = document.getElementById('extraction-log');
+            extractionLog = [];
+            if (logDiv) logDiv.innerHTML = '';
+            const appendLog = msg => {
+                extractionLog.push(msg);
+                if (logDiv) logDiv.innerHTML = extractionLog.map(l => `<div style='font-size:13px;color:#9ca3af;'>${l}</div>`).join('');
+            };
+            appendLog('Starting extraction...');
+            try {
+                const result = await apiCall('/webhook/control', 'POST', { action: 'run_extraction' });
+                if (result.error) {
+                    appendLog('Error: ' + result.error);
+                } else {
+                    appendLog('Extraction finished.');
+                    if (result.extractionResult) {
+                        appendLog('Result: ' + (typeof result.extractionResult === 'string' ? result.extractionResult : JSON.stringify(result.extractionResult)));
+                    }
+                    // Immediately refresh SQL data and status after extraction
                     refreshStatus();
                     refreshSQLData();
-                }, 5000);
+                }
+            } catch (error) {
+                appendLog('Error: ' + error.message);
             }
         }
 
@@ -1474,6 +1510,11 @@
                 if (event.target === mapModal) closeMapPopup();
             }
         })(window.onclick);
+
+        function showDebugLog(log) {
+            const logDiv = document.getElementById('debug-log-output');
+            if (logDiv) logDiv.textContent = log;
+        }
 
     </script>
 </body>
