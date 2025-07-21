@@ -898,13 +898,20 @@
             const showColLetter = uniqueColLetters.length > 1;
             const showDelLetter = uniqueDelLetters.length > 1;
             let html = `<h3>Details for Load Number: ${loadNumber}</h3>`;
+            // Sort collections, deliveries, and vehicles by letter (A, B, ...)
+            const sortByLetter = arr => arr.slice().sort((a, b) => {
+                const la = (a.letter || '').charCodeAt(0) || 0;
+                const lb = (b.letter || '').charCodeAt(0) || 0;
+                return la - lb;
+            });
             // Collections
             html += `<h4>Collections (${result.collectionCount || 0})</h4>`;
-            if (result.collections && result.collections.length > 0) {
+            const sortedCollections = sortByLetter(result.collections || []);
+            if (sortedCollections.length > 0) {
                 html += '<table class="data-table"><thead><tr>';
                 if (showColLetter) html += '<th></th>';
                 html += '<th>Name</th><th>Postcode</th><th>Map</th></tr></thead><tbody>';
-                result.collections.forEach(row => {
+                sortedCollections.forEach(row => {
                     html += '<tr>';
                     if (showColLetter) html += `<td>${letterBadge(row.letter)}</td>`;
                     html += `<td>${row.dwjName}</td><td>${row.dwjPostco}</td>`;
@@ -922,11 +929,12 @@
             }
             // Deliveries
             html += `<h4>Deliveries (${result.deliveryCount || 0})</h4>`;
-            if (result.deliveries && result.deliveries.length > 0) {
+            const sortedDeliveries = sortByLetter(result.deliveries || []);
+            if (sortedDeliveries.length > 0) {
                 html += '<table class="data-table"><thead><tr>';
                 if (showDelLetter) html += '<th></th>';
                 html += '<th>Name</th><th>Postcode</th><th>Map</th></tr></thead><tbody>';
-                result.deliveries.forEach(row => {
+                sortedDeliveries.forEach(row => {
                     html += '<tr>';
                     if (showDelLetter) html += `<td>${letterBadge(row.letter)}</td>`;
                     html += `<td>${row.dwjName}</td><td>${row.dwjPostco}</td>`;
@@ -942,32 +950,21 @@
             } else {
                 html += '<p>No delivery locations found for this load.</p>';
             }
-            // Vehicles grouped by collection/delivery letter
+            // Vehicles (just sort, do not group)
             html += `<h4>Vehicles (${result.vehicleCount || 0})</h4>`;
-            if (result.vehicles && result.vehicles.length > 0) {
-                // Group vehicles by collection letter (colLetter), then by delivery letter (delLetter)
-                const groupBy = (arr, key) => arr.reduce((acc, item) => {
-                    const k = item[key] || '';
-                    if (!acc[k]) acc[k] = [];
-                    acc[k].push(item);
-                    return acc;
-                }, {});
-                let grouped = groupBy(result.vehicles, showColLetter ? 'colLetter' : (showDelLetter ? 'delLetter' : 'colLetter'));
-                const sortedLetters = Object.keys(grouped).sort();
-                sortedLetters.forEach(letter => {
-                    html += `<div style='margin:10px 0 0 0;'><b>${letter ? letterBadge(letter) : ''} ${letter ? 'Location ' + letter : 'No Letter'}</b></div>`;
-                    html += '<table class="data-table"><thead><tr><th>Vehicle Ref</th><th>Model</th>';
-                    if (showColLetter) html += '<th>Collection</th>';
-                    if (showDelLetter) html += '<th>Delivery</th>';
-                    html += '</tr></thead><tbody>';
-                    grouped[letter].forEach(row => {
-                        html += `<tr><td>${row.dwvVehRef}</td><td>${row.dwvModDes}</td>`;
-                        if (showColLetter) html += `<td>${letterBadge(row.colLetter)}</td>`;
-                        if (showDelLetter) html += `<td>${letterBadge(row.delLetter)}</td>`;
-                        html += '</tr>';
-                    });
-                    html += '</tbody></table>';
+            const sortedVehicles = sortByLetter(result.vehicles || []);
+            if (sortedVehicles.length > 0) {
+                html += '<table class="data-table"><thead><tr><th>Vehicle Ref</th><th>Model</th>';
+                if (showColLetter) html += '<th>Collection</th>';
+                if (showDelLetter) html += '<th>Delivery</th>';
+                html += '</tr></thead><tbody>';
+                sortedVehicles.forEach(row => {
+                    html += `<tr><td>${row.dwvVehRef}</td><td>${row.dwvModDes}</td>`;
+                    if (showColLetter) html += `<td>${letterBadge(row.colLetter)}</td>`;
+                    if (showDelLetter) html += `<td>${letterBadge(row.delLetter)}</td>`;
+                    html += '</tr>';
                 });
+                html += '</tbody></table>';
             } else {
                 html += '<p>No vehicles found for this load.</p>';
             }
