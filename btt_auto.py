@@ -353,16 +353,19 @@ class WebhookHandler(BaseHTTPRequestHandler):
             adb_ips = []
             any_connected = False
             any_unauthorized = False
+            adb_device_name = None
             try:
                 adb_ips = self.manager.get_adb_ips()
                 for device in adb_ips:
                     ip = device.get('ip', device)
+                    name = device.get('name', ip)
                     try:
                         connected, _, unauthorized = self.manager.test_adb_connection(ip)
                         if unauthorized:
                             any_unauthorized = True
                         if connected:
                             any_connected = True
+                            adb_device_name = name
                             break
                     except Exception as e:
                         self.manager.log_webhook(f"Error testing ADB connection for {ip}: {e}")
@@ -393,7 +396,8 @@ class WebhookHandler(BaseHTTPRequestHandler):
                 'adbConnected': any_connected,
                 'adbUnauthorized': any_unauthorized,
                 'adbAttentionNeeded': (not any_connected and any_unauthorized),
-                'preferredDevice': self.manager.config.get('preferred_device', None)
+                'preferredDevice': self.manager.config.get('preferred_device', None),
+                'adbDeviceName': adb_device_name
             }
             self.send_response(200)
             self.send_header('Content-type', 'application/json')

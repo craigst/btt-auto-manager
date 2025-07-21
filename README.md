@@ -210,6 +210,30 @@ docker logs btt-auto-manager
 docker logs -f btt-auto-manager
 ```
 
+## Persistent ADB Key (No More Re-Authorization)
+
+To avoid repeated ADB authorization prompts after Docker rebuilds, mount a persistent `.android` directory:
+
+```
+mkdir -p /mnt/user/appdata/BCASql\ extraction/.android
+```
+
+Add this to your Docker run command:
+```
+-v /mnt/user/appdata/BCASql\ extraction/.android:/home/bttuser/.android
+```
+
+This ensures your ADB key is saved and recognized by your Android device after every rebuild.
+
+## Recent Improvements
+
+- Robust ADB extraction: tries all root/copy methods, fallback paths, and provides debug logs
+- Persistent ADB key: no more repeated device authorization
+- Auto-update toggle: works with any connected device, persists across restarts
+- Web UI: immediate SQL refresh after extraction, better status display, debug log output
+- ADB device name now shown in status
+- Server uptime now shown as days, hours, and minutes
+
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details. 

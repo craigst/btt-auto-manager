@@ -614,6 +614,21 @@
                 if (status.autoStatus === 'enabled') autoStatusText = '🟢 Enabled';
                 else if (status.autoStatus === 'off') autoStatusText = 'Off';
                 else autoStatusText = 'Disabled';
+                // Format uptime as days, hours, minutes
+                function formatUptime(seconds) {
+                    seconds = Math.floor(seconds || 0);
+                    if (seconds < 60) return `${seconds} seconds`;
+                    const minutes = Math.floor(seconds / 60);
+                    if (minutes < 60) return `${minutes} minutes`;
+                    const hours = Math.floor(minutes / 60);
+                    const mins = minutes % 60;
+                    if (hours < 24) return `${hours} hours ${mins} minutes`;
+                    const days = Math.floor(hours / 24);
+                    const hrs = hours % 24;
+                    return `${days} days ${hrs} hours ${mins} minutes`;
+                }
+                // Show ADB device name if available
+                let adbDeviceName = status.adbDeviceName ? `<div class='status-value'>ADB Device: <b>${status.adbDeviceName}</b></div>` : '';
                 const html = `
                     ${attentionHtml}
                     <div class="status-grid">
@@ -632,10 +647,11 @@
                             <div class="status-value ${status.adbConnected ? 'status-online' : 'status-offline'}">
                                 ${status.adbConnected ? '🟢 Connected' : '🔴 Not Connected'}
                             </div>
+                            ${adbDeviceName}
                         </div>
                         <div class="status-card">
                             <h3>Server Uptime</h3>
-                            <div class="status-value">${status.uptimeFormatted || (Math.round(status.uptime || 0) + ' seconds')}</div>
+                            <div class="status-value">${formatUptime(status.uptime)}</div>
                         </div>
                     </div>
                     <div id="debug-log-output" style="margin-top:20px;font-size:0.95em;color:#9ca3af;"></div>
