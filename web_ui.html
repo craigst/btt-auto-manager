@@ -899,7 +899,9 @@
                 html += '<div style="margin-bottom:8px;">';
                 result.collections.sort((a, b) => (a.letter || '').localeCompare(b.letter || ''));
                 for (const col of result.collections) {
-                    html += `<span style='margin-right:10px;'>${letterBadge(col.letter)}${col.name || ''}</span>`;
+                    // Show badge and actual location name (dwjName or fallback to dwjPostco)
+                    const locName = col.dwjName || col.dwjPostco || '';
+                    html += `<span style='margin-right:10px;'>${letterBadge(col.letter)}${locName}</span>`;
                 }
                 html += '</div>';
             }
@@ -912,7 +914,9 @@
                 html += '<div style="margin-bottom:12px;">';
                 result.deliveries.sort((a, b) => (a.letter || '').localeCompare(b.letter || ''));
                 for (const del of result.deliveries) {
-                    html += `<span style='margin-right:10px;'>${letterBadge(del.letter)}${del.name || ''}</span>`;
+                    // Show badge and actual location name (dwjName or fallback to dwjPostco)
+                    const locName = del.dwjName || del.dwjPostco || '';
+                    html += `<span style='margin-right:10px;'>${letterBadge(del.letter)}${locName}</span>`;
                 }
                 html += '</div>';
             }
