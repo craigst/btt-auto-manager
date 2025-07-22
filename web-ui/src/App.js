@@ -588,7 +588,8 @@ function App() {
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th style={{minWidth:'220px'}}>Device Name / IP Address</th>
+                    <th style={{minWidth:'140px'}}>Device Name</th>
+                    <th style={{minWidth:'140px'}}>IP Address</th>
                     <th>Connection Status</th>
                     <th>Test Result</th>
                     <th>Actions</th>
@@ -598,16 +599,21 @@ function App() {
                   {adbIPs.map((entry, index) => {
                     const ip = entry.ip || entry;
                     const connected = entry.connected === true;
+                    // Set name to 'nvidia' if not already set and this is the only device
+                    let name = entry.name;
+                    if (adbIPs.length === 1 && (!name || name === ip)) {
+                      name = 'nvidia';
+                    }
                     return (
                       <tr key={index} className="fade-in-row">
-                        <td style={{minWidth:'220px'}}>
+                        <td style={{minWidth:'140px'}}>
                           {editingDevice === ip ? (
                             <>
                               <input
                                 type="text"
                                 value={editingDeviceName}
                                 onChange={e => setEditingDeviceName(e.target.value)}
-                                style={{width:'120px',marginRight:'6px'}}
+                                style={{width:'100px',marginRight:'6px'}}
                                 autoFocus
                               />
                               <button className="button success" onClick={() => renameADBDevice(ip, editingDeviceName)}>Save</button>
@@ -615,11 +621,12 @@ function App() {
                             </>
                           ) : (
                             <>
-                              <span>{entry.name ? entry.name : <span style={{color:'#888'}}>(No Name)</span>}<span style={{color:'#aaa',marginLeft:'6px'}}>{ip}</span></span>
-                              <button className="button warning" style={{marginLeft:'8px',padding:'2px 8px',display:'inline-block'}} onClick={() => {setEditingDevice(ip);setEditingDeviceName(entry.name||'')}}>Edit</button>
+                              <span>{name ? name : <span style={{color:'#888'}}>(No Name)</span>}</span>
+                              <button className="button warning" style={{marginLeft:'8px',padding:'2px 8px',display:'inline-block'}} onClick={() => {setEditingDevice(ip);setEditingDeviceName(name||'')}}>Edit</button>
                             </>
                           )}
                         </td>
+                        <td style={{minWidth:'140px'}}>{ip}</td>
                         <td>
                           <span className={`connection-status ${connected ? 'connection-connected' : 'connection-disconnected'}`}>
                             {connected ? 'Connected' : 'Disconnected'}
