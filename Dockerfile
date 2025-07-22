@@ -59,4 +59,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 COPY web-ui/build /app/build
 
 # Serve React build with Python http.server
-CMD ["python3", "-m", "http.server", "5680", "--directory", "/app/build"] 
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"] 

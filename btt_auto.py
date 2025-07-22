@@ -112,6 +112,20 @@ class WebhookHandler(BaseHTTPRequestHandler):
             path = parsed_path.path
             query = urllib.parse.parse_qs(parsed_path.query)
             logger.log(f"GET {path}")
+
+            # Serve static files from React build
+            build_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'build')
+            static_path = os.path.join(build_dir, path.lstrip('/'))
+            if os.path.exists(static_path) and os.path.isfile(static_path):
+                import mimetypes
+                self.send_response(200)
+                mime, _ = mimetypes.guess_type(static_path)
+                self.send_header('Content-type', mime or 'application/octet-stream')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                with open(static_path, 'rb') as f:
+                    self.wfile.write(f.read())
+                return
             
             # Log the incoming request
             if self.manager:
@@ -195,9 +209,8 @@ class WebhookHandler(BaseHTTPRequestHandler):
                 self.manager.log_webhook(f"DEBUG: Toggle result: {result}")
                 response = {'status': 'success', 'message': 'Auto-update toggled', 'autoEnabled': result.get('autoEnabled', False)}
             elif action == 'set_interval':
-                minutes = data.get('minutes', 5)
-                self.manager.set_interval(minutes)
-                response = {'status': 'success', 'message': f'Interval set to {minutes} minutes'}
+                # Ignore set_interval requests, always fixed at 5
+                response = {'status': 'success', 'message': 'Interval is fixed at 5 minutes'}
             elif action == 'run_extraction':
                 extraction_result = self.manager.run_getsql_webhook()
                 response = {'status': 'success', 'message': 'SQL extraction finished', 'extractionResult': extraction_result}
@@ -219,12 +232,11 @@ class WebhookHandler(BaseHTTPRequestHandler):
             self.send_header('Access-Control-Allow-Origin', '*')
             self.end_headers()
             self.wfile.write(json.dumps(response, indent=2).encode())
-            
         except json.JSONDecodeError:
             self.send_error(400, "Invalid JSON")
         except Exception as e:
-            logger.log(f"Control error: {e}\n{traceback.format_exc()}", 'ERROR')
-            self.send_error(500, f"Control error: {e}")
+            logger.log(f"Webhook GET error: {e}\n{traceback.format_exc()}", 'ERROR')
+            self.send_error(500, f"Webhook GET error: {e}")
     
     def handle_adb_ips(self, post_data):
         """Handle ADB IP management via webhook"""
@@ -385,7 +397,7 @@ class WebhookHandler(BaseHTTPRequestHandler):
             status = {
                 'autoEnabled': self.manager.config.get('auto_enabled', False),
                 'autoStatus': auto_status,
-                'intervalMinutes': self.manager.config.get('interval_minutes', 5),
+                'intervalMinutes': 5,  # Always fixed at 5
                 'uptime': time.time() - getattr(self.manager, 'start_time', time.time()),
                 'lastLocations': self.manager.config.get('last_locations', 0),
                 'lastCars': self.manager.config.get('last_cars', 0),
@@ -420,6 +432,7 @@ class WebhookHandler(BaseHTTPRequestHandler):
                 ip = device.get('ip', device)
                 connected, _, unauthorized = self.manager.test_adb_connection(ip)
                 result.append({'ip': ip, 'name': device.get('name', ip), 'connected': connected, 'unauthorized': unauthorized})
+            logger.log(f"serve_adb_ips: Returning {result}")
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
             self.send_header('Access-Control-Allow-Origin', '*')
@@ -482,14 +495,13 @@ class WebhookHandler(BaseHTTPRequestHandler):
             self.send_error(500, f"Failed to serve icon: {e}")
 
     def serve_web_ui(self):
-        """Serve the web UI HTML page"""
+        """Serve the web UI HTML page (React build)"""
         try:
-            # Read the web UI HTML file
-            html_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'web_ui.html')
+            # Serve the React build index.html
+            html_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'build', 'index.html')
             if os.path.exists(html_path):
                 with open(html_path, 'r', encoding='utf-8') as f:
                     html_content = f.read()
-                
                 self.send_response(200)
                 self.send_header('Content-type', 'text/html')
                 self.send_header('Access-Control-Allow-Origin', '*')
@@ -503,7 +515,7 @@ class WebhookHandler(BaseHTTPRequestHandler):
                 <head><title>BTT Auto Manager</title></head>
                 <body>
                 <h1>BTT Auto Manager</h1>
-                <p>Web UI file not found. Please check the installation.</p>
+                <p>React build not found. Please check the installation.</p>
                 <p><a href="/status">Status</a> | <a href="/healthz">Health</a></p>
                 </body>
                 </html>
@@ -513,7 +525,6 @@ class WebhookHandler(BaseHTTPRequestHandler):
                 self.send_header('Access-Control-Allow-Origin', '*')
                 self.end_headers()
                 self.wfile.write(fallback_html.encode('utf-8'))
-                
         except Exception as e:
             logger.log(f"Failed to serve web UI: {e}\n{traceback.format_exc()}", 'ERROR')
             self.send_error(500, f"Failed to serve web UI: {e}")
@@ -590,12 +601,11 @@ class BTTAutoManager:
             "adb_ips": [],
             "preferred_device": None
         }
-        
         if os.path.exists(CONFIG_FILE):
             try:
                 with open(CONFIG_FILE, 'r') as f:
                     config = json.load(f)
-                    # Merge with defaults to ensure all keys exist
+                    # Only set missing keys, do not overwrite existing interval_minutes
                     for key, value in default_config.items():
                         if key not in config:
                             config[key] = value
@@ -617,8 +627,10 @@ class BTTAutoManager:
         try:
             with open(CONFIG_FILE, 'w') as f:
                 json.dump(config, f, indent=2)
+            logger.log(f"save_config: Saved config to {CONFIG_FILE}")
         except Exception as e:
             console.print(f"[red]Error saving config: {e}[/red]")
+            logger.log(f"save_config: Error saving config: {e}")
     
     def add_adb_ip(self, ip, name=None):
         """Add ADB IP address to the list"""
@@ -977,7 +989,7 @@ class BTTAutoManager:
             'webhookEnabled': self.config.get('webhook_enabled', True),
             'webhookPort': self.config.get('webhook_port', WEBHOOK_PORT),
             'autoEnabled': self.config.get('auto_enabled', False),
-            'intervalMinutes': self.config.get('interval_minutes', 5),
+            'intervalMinutes': 5,  # Always fixed at 5
             'lastLocations': self.config.get('last_locations', 0),
             'lastCars': self.config.get('last_cars', 0),
             'lastLoads': self.config.get('last_loads', 0),
@@ -1238,9 +1250,13 @@ class BTTAutoManager:
             minutes = 1
         elif minutes > 1440:  # 24 hours
             minutes = 1440
-            
+        old_minutes = self.config.get("interval_minutes", None)
         self.config["interval_minutes"] = minutes
         self.save_config()
+        logger.log(f"set_interval: Changed interval_minutes from {old_minutes} to {minutes}")
+        # Reload config from disk to ensure persistence
+        self.config = self.load_config()
+        logger.log(f"set_interval: Reloaded config, interval_minutes is now {self.config.get('interval_minutes')}")
         console.print(f"[green]Update interval set to {minutes} minutes[/green]")
     
     def toggle_webhook(self):

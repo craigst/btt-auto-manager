@@ -237,3 +237,19 @@ This ensures your ADB key is saved and recognized by your Android device after e
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details. 
+
+## New React Web UI Features
+
+- **Modern dark mode interface**
+- **Sticky table headers** for all data modals (DWJJOB, DWVVEH, Load Numbers, Load Details)
+- **Embedded map popup**: Click the map icon in Load Details to open an interactive Google Map (uses GPS if available, otherwise postcode)
+- **Color-coded letter badges**: Each location letter (A, B, C, etc.) uses a distinct color for easy visual matching
+- **Stacked modals for load navigation**: When viewing Load Numbers, you can open multiple Load Details modals without losing your place
+- **Live server uptime and auto-update timer**
+- **Improved UX and accessibility**
+
+### How to Use
+- Click "View Details" on any data card to open a scrollable, sticky-header modal
+- In Load Numbers, click a load number to view its details; close the modal to return to the list
+- Click the map icon to view an embedded map popup
+- All controls and settings are available in the ⚙️ System Settings modal 
