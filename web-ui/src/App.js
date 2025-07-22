@@ -616,7 +616,7 @@ function App() {
                           ) : (
                             <>
                               {entry.name || ip}
-                              <button className="button warning" style={{marginLeft:'8px',padding:'2px 8px'}} onClick={() => {setEditingDevice(ip);setEditingDeviceName(entry.name||'')}}>Edit</button>
+                              <button className="button warning" style={{marginLeft:'8px',padding:'2px 8px',display:'inline-block'}} onClick={() => {setEditingDevice(ip);setEditingDeviceName(entry.name||'')}}>Edit</button>
                             </>
                           )}
                         </td>
@@ -696,7 +696,7 @@ function App() {
                   <input
                     type="number"
                     id="update-interval"
-                    value={status && status.intervalMinutes ? status.intervalMinutes : 5}
+                    value={5}
                     readOnly
                     disabled
                   />
