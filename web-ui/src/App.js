@@ -588,7 +588,7 @@ function App() {
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th>IP Address</th>
+                    <th style={{minWidth:'220px'}}>Device Name / IP Address</th>
                     <th>Connection Status</th>
                     <th>Test Result</th>
                     <th>Actions</th>
@@ -600,7 +600,7 @@ function App() {
                     const connected = entry.connected === true;
                     return (
                       <tr key={index} className="fade-in-row">
-                        <td>
+                        <td style={{minWidth:'220px'}}>
                           {editingDevice === ip ? (
                             <>
                               <input
@@ -615,7 +615,7 @@ function App() {
                             </>
                           ) : (
                             <>
-                              {entry.name || ip}
+                              <span>{entry.name ? entry.name : <span style={{color:'#888'}}>(No Name)</span>}<span style={{color:'#aaa',marginLeft:'6px'}}>{ip}</span></span>
                               <button className="button warning" style={{marginLeft:'8px',padding:'2px 8px',display:'inline-block'}} onClick={() => {setEditingDevice(ip);setEditingDeviceName(entry.name||'')}}>Edit</button>
                             </>
                           )}
