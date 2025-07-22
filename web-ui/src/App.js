@@ -295,6 +295,31 @@ function App() {
     }
   };
 
+  // Add state for editing device name
+  const [editingDevice, setEditingDevice] = useState(null);
+  const [editingDeviceName, setEditingDeviceName] = useState('');
+
+  // Add function to handle rename
+  const renameADBDevice = async (ip, name) => {
+    if (!name.trim()) {
+      showMessage('Device name cannot be empty', 'error');
+      return;
+    }
+    const result = await apiCall('/webhook/adb-ips', 'POST', {
+      action: 'rename',
+      ip,
+      name: name.trim()
+    });
+    if (result.error) {
+      showMessage(`Error renaming device: ${result.error}`, 'error');
+    } else {
+      showMessage(`Renamed device: ${ip}`);
+      setEditingDevice(null);
+      setEditingDeviceName('');
+      fetchADBIPs();
+    }
+  };
+
   // Initial data load
   useEffect(() => {
     const loadData = async () => {
@@ -574,8 +599,27 @@ function App() {
                     const ip = entry.ip || entry;
                     const connected = entry.connected === true;
                     return (
-                      <tr key={index}>
-                        <td>{ip}</td>
+                      <tr key={index} className="fade-in-row">
+                        <td>
+                          {editingDevice === ip ? (
+                            <>
+                              <input
+                                type="text"
+                                value={editingDeviceName}
+                                onChange={e => setEditingDeviceName(e.target.value)}
+                                style={{width:'120px',marginRight:'6px'}}
+                                autoFocus
+                              />
+                              <button className="button success" onClick={() => renameADBDevice(ip, editingDeviceName)}>Save</button>
+                              <button className="button" onClick={() => setEditingDevice(null)} style={{marginLeft:'4px'}}>Cancel</button>
+                            </>
+                          ) : (
+                            <>
+                              {entry.name || ip}
+                              <button className="button warning" style={{marginLeft:'8px',padding:'2px 8px'}} onClick={() => {setEditingDevice(ip);setEditingDeviceName(entry.name||'')}}>Edit</button>
+                            </>
+                          )}
+                        </td>
                         <td>
                           <span className={`connection-status ${connected ? 'connection-connected' : 'connection-disconnected'}`}>
                             {connected ? 'Connected' : 'Disconnected'}

@@ -318,4 +318,12 @@ input:checked + .slider:before {
   overflow-y: auto;
   color: #e0e0e0;
   box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+}
+
+@keyframes fadeInRow {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.fade-in-row {
+  animation: fadeInRow 0.6s ease;
 } 
